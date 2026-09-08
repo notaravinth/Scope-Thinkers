@@ -1,22 +1,50 @@
 const taskInput = document.getElementById('taskInput');
 const addTask = document.getElementById('addTask');
 const taskList = document.getElementById('taskList');
+const clearAll = document.getElementById('clearAll');
 
 addTask.addEventListener('click', () => {
 
     const task = document.createElement('li');
-    const deleteButton = document.createElement('button');
+    const taskText = document.createElement('span');
+    const buttonContainer = document.createElement('div');
 
-    task.textContent = taskInput.value;
+    const deleteButton = document.createElement('button');
+    const doneButton = document.createElement('button');
+
+    taskText.textContent = taskInput.value;
 
     deleteButton.textContent = 'Delete';
+    doneButton.textContent = 'Mark as Done';
 
-    task.appendChild(deleteButton);
+    buttonContainer.appendChild(doneButton);
+    buttonContainer.appendChild(deleteButton);
+
+    task.appendChild(taskText);
+    task.appendChild(buttonContainer);
+
     taskList.appendChild(task);
+
+    clearAll.style.display = 'block';
 
     deleteButton.addEventListener('click', () => {
         task.remove();
     });
 
+    doneButton.addEventListener('click', () => {
+        taskText.classList.toggle('task-done');
+
+        if (taskText.classList.contains('task-done')) {
+            doneButton.textContent = 'Mark as Undone';
+        } else {
+            doneButton.textContent = 'Mark as Done';
+        }
+    });        
+
     taskInput.value = '';
 });
+
+clearAll.addEventListener('click', () => {
+        taskList.innerHTML = '';
+        clearAll.style.display='none'
+    });
