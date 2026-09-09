@@ -5,6 +5,11 @@ const clearAll = document.getElementById('clearAll');
 
 addTask.addEventListener('click', () => {
 
+    if(taskInput.value === ''){
+        alert("please enter a task");
+        return;
+    }
+
     const task = document.createElement('li');
     const taskText = document.createElement('span');
     const buttonContainer = document.createElement('div');
@@ -30,6 +35,10 @@ addTask.addEventListener('click', () => {
     deleteButton.addEventListener('click', () => {
         task.remove();
     });
+
+    if(taskList.value === ''){
+        clearAll.style.display = 'none';
+    }
 
     doneButton.addEventListener('click', () => {
         taskText.classList.toggle('task-done');
