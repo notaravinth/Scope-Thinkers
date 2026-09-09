@@ -2,7 +2,7 @@ import {useState} from 'react';
 import { useNavigate } from 'react-router-dom';
 
 function ExpenseForm() {
-    const navigate = useNavigate();
+    const navigate = useNavigate(); 
 
     const [budget, setBudget] = useState(0);
 
