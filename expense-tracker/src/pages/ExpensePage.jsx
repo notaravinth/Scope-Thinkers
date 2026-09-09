@@ -10,8 +10,6 @@ const ExpensePage = () => {
     const [expenses, setExpenses] = useState([]);
     const [remainingBudget, setRemainingBudget] = useState(location.state.budget);
 
-    console.log(expenses);
-
     return (
         <div className='mt-5 '>
 
@@ -35,7 +33,7 @@ const ExpensePage = () => {
                 onSubmit={(e) => {
                     e.preventDefault();
 
-                    if (expenseAmount <= 0 || expenseDescription.trim() === '') {
+                    if (expenseAmount <= 0 || expenseDescription === '') {
                         alert('Please enter a valid expense amount and description.');
                         return;
                     }
@@ -44,6 +42,7 @@ const ExpensePage = () => {
                         alert('You have exceeded your budget!');
                         return;
                     }
+                
 
                     const newExpense = {
                         amount: expenseAmount,
@@ -88,10 +87,7 @@ const ExpensePage = () => {
             <div className='items-center mt-5 flex flex-row flex-wrap text-center justify-center'>
 
                 {expenses.map((expense, index) => (
-                    <div
-                        key={index}
-                        className='flex flex-col items-center border-2 border-white rounded-lg p-2 m-2 w-90 text-center text-2xl mt-5 mb-5 text-white'
-                    >
+                    <div key={index} className='flex flex-col items-center border-2 border-white rounded-lg p-2 m-2 w-90 text-center text-2xl mt-5 mb-5 text-white'>
                         <p className='text-xxl mb-2'>
                             Amount: ₹{expense.amount}
                         </p>

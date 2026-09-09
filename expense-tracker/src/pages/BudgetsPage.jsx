@@ -21,8 +21,7 @@ function ExpenseForm() {
                         e.preventDefault();
                         navigate('/expenses',
                             {state:{
-                            budget:budget
-                        }});
+                            budget:budget}});
                     }}
                     className='flex flex-col items-center bo'
                 >
