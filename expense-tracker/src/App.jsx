@@ -1,9 +1,10 @@
 import React from 'react'
+import ExpenseForm from './components/ExpenseForm'
 
 const App = () => {
   return (
     <div>
-      <h1 className="text-blue-500 text-3xl font-bold text-center mt-10">Expense Tracker</h1>
+      <ExpenseForm/>
     </div>
   )
 }
