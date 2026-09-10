@@ -1,11 +1,19 @@
-import React from 'react'
+import { products } from './data'
+import ProductCard from './components/ProductCard'
+import Cart from './components/Cart'
 
-const App = () => {
-  return (
-    <div>
-      <h1 className="text-2xl font-bold text-red-500">Welcome to the App</h1>
-    </div>
-  )
+function App() {
+
+    return (
+        <div>
+          <div className="grid grid-cols-2 gap-4 items-center justify-center text-center mt-10">
+            {products.map((product)=>(
+              <ProductCard key={product.id} product={product} />
+            ))}
+          </div>
+          <Cart/>
+        </div>
+    )
 }
 
 export default App
