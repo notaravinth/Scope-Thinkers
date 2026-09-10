@@ -1,19 +1,19 @@
-import { products } from './data'
-import ProductCard from './components/ProductCard'
-import Cart from './components/Cart'
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+
+import Home from "./pages/Home";
+import CartPage from "./pages/CartPage";
+import Navbar from "./components/Navbar";
 
 function App() {
-
-    return (
-        <div>
-          <div className="grid grid-cols-2 gap-4 items-center justify-center text-center mt-10">
-            {products.map((product)=>(
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
-          <Cart/>
-        </div>
-    )
+  return (
+    <BrowserRouter>
+      <Navbar />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/cart" element={<CartPage />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
-export default App
+export default App;
