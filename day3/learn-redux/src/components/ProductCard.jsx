@@ -6,14 +6,24 @@ function ProductCard({ product }) {
   const dispatch = useDispatch();
 
   return (
-    <div className="flex flex-col gap-3 items-center justify-center mt-10 border-5 border-gray-300 rounded-lg p-5">
-      <h1>{product.name}</h1>
+    <div className="flex flex-row gap-5 items-center mt-10 border-5 border-gray-300 rounded-lg p-5">
+      <img
+        src={product.image}
+        alt={product.name}
+        className="w-32 h-32 object-cover"
+      />
 
-      <p>₹{product.price}</p>
+      <div className="flex flex-col gap-3">
+        <h1 className="text-xl font-bold">{product.name}</h1>
 
-      <button onClick={() => dispatch(addToCart(product))} className="mt-3">
-        Add to cart
-      </button>
+        <p>{product.description}</p>
+
+        <p>₹{product.price}</p>
+
+        <button onClick={() => dispatch(addToCart(product))} className="mt-3">
+          Add to cart
+        </button>
+      </div>
     </div>
   );
 }

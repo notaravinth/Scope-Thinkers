@@ -18,6 +18,11 @@ function Cart() {
       {items.map((item) => (
         <div key={item.id}>
           <div className="flex-col gap-2 items-center justify-center mt-3 text-center">
+            <img
+              src={item.image}
+              alt=""
+              className="w-32 h-32 object-cover item-center justify-center align-center ml-11"
+            />
             <p>{item.name}</p>
             <p>Number of items: {item.quantity}</p>
           </div>
