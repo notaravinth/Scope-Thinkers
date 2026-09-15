@@ -16,9 +16,6 @@ function Navbar() {
         {/* Logo */}
 
         <Link to="/" className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-xl">
-            📚
-          </div>
 
           <div>
             <h1 className="font-bold">BookShelf</h1>
