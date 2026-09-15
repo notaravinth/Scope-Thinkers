@@ -103,7 +103,6 @@ class App extends React.Component {
 
     return (
       <div className="min-h-screen bg-gray-950 text-white">
-
         {/* Header */}
         <header className="text-center pt-12 px-4 mt-45">
           <FoldText
@@ -117,12 +116,9 @@ class App extends React.Component {
             trigger="mount"
           />
 
-          <p className="text-gray-400 mt-3">
-            Latest English News
-          </p>
+          <p className="text-gray-400 mt-3">Latest English News</p>
         </header>
 
-        {/* Categories */}
         <section className="relative h-64 mt-8">
           <BubbleMenu
             menuBg="#ffffff"
@@ -183,7 +179,7 @@ class App extends React.Component {
           />
         </section>
 
-        {/* Current Category */}
+
         <section className="text-center px-4">
           <p className="text-gray-400">
             Showing:{" "}
@@ -193,25 +189,20 @@ class App extends React.Component {
           </p>
         </section>
 
-        {/* Loading */}
+
         {this.state.loading && (
           <div className="flex justify-center items-center py-20">
-            <p className="text-xl text-gray-300">
-              Loading news...
-            </p>
+            <p className="text-xl text-gray-300">Loading news...</p>
           </div>
         )}
 
-        {/* Error */}
+
         {this.state.error && (
           <div className="flex justify-center items-center py-20">
-            <p className="text-red-500">
-              {this.state.error}
-            </p>
+            <p className="text-red-500">{this.state.error}</p>
           </div>
         )}
 
-        {/* News Grid */}
         {!this.state.loading && !this.state.error && (
           <main className="max-w-7xl mx-auto px-6 pt-8 pb-16">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -226,7 +217,6 @@ class App extends React.Component {
           </main>
         )}
 
-        {/* Article Popup */}
         {this.state.selectedArticle && (
           <div
             className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-5 z-50"
@@ -236,7 +226,6 @@ class App extends React.Component {
               className="bg-gray-900 rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-gray-700"
               onClick={(event) => event.stopPropagation()}
             >
-
               {/* Popup Image */}
               {this.state.selectedArticle.image_url && (
                 <img
@@ -247,7 +236,6 @@ class App extends React.Component {
               )}
 
               <div className="p-7">
-
                 {/* Close Button */}
                 <button
                   onClick={this.closeArticle}
@@ -263,15 +251,11 @@ class App extends React.Component {
 
                 {/* Source + Date */}
                 <div className="flex gap-3 text-sm text-gray-400 mt-4">
-                  <span>
-                    {this.state.selectedArticle.source_name}
-                  </span>
+                  <span>{this.state.selectedArticle.source_name}</span>
 
                   <span>•</span>
 
-                  <span>
-                    {this.state.selectedArticle.pubDate}
-                  </span>
+                  <span>{this.state.selectedArticle.pubDate}</span>
                 </div>
 
                 {/* Description */}
@@ -295,7 +279,6 @@ class App extends React.Component {
             </div>
           </div>
         )}
-
       </div>
     );
   }

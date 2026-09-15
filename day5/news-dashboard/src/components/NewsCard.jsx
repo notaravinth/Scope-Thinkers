@@ -19,7 +19,6 @@ class NewsCard extends React.Component {
           hover:shadow-2xl
         "
       >
-        {/* Image */}
         <div className="relative h-52 overflow-hidden">
           {article.image_url ? (
             <img
@@ -37,10 +36,8 @@ class NewsCard extends React.Component {
             </div>
           )}
 
-          {/* Image overlay */}
           <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent" />
 
-          {/* Source badge */}
           <div className="absolute top-4 left-4">
             <span className="bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-xs text-white">
               {article.source_name || "News"}
@@ -48,44 +45,37 @@ class NewsCard extends React.Component {
           </div>
         </div>
 
-        {/* Content */}
         <div className="p-5">
-
-          {/* Category */}
           {article.category && article.category.length > 0 && (
             <p className="text-blue-400 text-xs uppercase tracking-widest mb-2">
               {article.category[0]}
             </p>
           )}
 
-          {/* Title */}
-          <h2 className="
+          <h2
+            className="
             text-xl font-bold leading-tight
             line-clamp-3
             group-hover:text-blue-400
             transition-colors duration-300
-          ">
-            {article.title}
-          </h2>
+          "
+          ></h2>
 
-          {/* Description */}
-          <p className="
+          <p
+            className="
             text-gray-400
             text-sm
             mt-3
             line-clamp-3
-          ">
+          "
+          >
             {article.description || "No description available."}
           </p>
 
-          {/* Date */}
           {article.pubDate && (
-            <p className="text-gray-500 text-xs mt-4">
-              {article.pubDate}
-            </p>
+            <p className="text-gray-500 text-xs mt-4">{article.pubDate}</p>
           )}
 
-          {/* Read More */}
           <button
             onClick={this.handleReadMore}
             className="
@@ -104,10 +94,8 @@ class NewsCard extends React.Component {
           >
             Read More →
           </button>
-
         </div>
 
-        {/* Hover glow */}
         <div
           className="
             pointer-events-none
@@ -128,4 +116,3 @@ class NewsCard extends React.Component {
 }
 
 export default NewsCard;
-
