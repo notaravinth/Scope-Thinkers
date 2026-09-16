@@ -1,35 +1,54 @@
+import { useEffect, useState } from "react"
+import { collection, getDocs } from "firebase/firestore"
 import { Link } from "react-router-dom"
 
+import { db } from "../firebase"
+
 function Explore() {
-  const projects = [
-    {
-      id: "1",
-      title: "Expense Tracker",
-      description:
-        "A simple application for tracking personal expenses and monthly spending.",
-      author: "Ravi Kumar",
-      technologies: ["React", "Firebase", "CSS"],
-      likes: 24,
-    },
-    {
-      id: "2",
-      title: "Campus Connect",
-      description:
-        "A platform for students to discover events, clubs and activities around campus.",
-      author: "Arjun S",
-      technologies: ["React", "Node.js", "MongoDB"],
-      likes: 17,
-    },
-    {
-      id: "3",
-      title: "Weather Dashboard",
-      description:
-        "A minimal weather application using location data and a public weather API.",
-      author: "Priya M",
-      technologies: ["React", "REST API"],
-      likes: 11,
-    },
-  ]
+  const [projects, setProjects] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const [search, setSearch] = useState("")
+  const [technology, setTechnology] = useState("All technologies")
+
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const snapshot = await getDocs(
+          collection(db, "projects")
+        )
+
+        const projectData = snapshot.docs.map((document) => ({
+          id: document.id,
+          ...document.data(),
+        }))
+
+        setProjects(projectData)
+      } catch (error) {
+        console.error("Error fetching projects:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchProjects()
+  }, [])
+
+  const filteredProjects = projects.filter((project) => {
+    const matchesSearch =
+      project.title
+        ?.toLowerCase()
+        .includes(search.toLowerCase()) ||
+      project.description
+        ?.toLowerCase()
+        .includes(search.toLowerCase())
+
+    const matchesTechnology =
+      technology === "All technologies" ||
+      project.technologies?.includes(technology)
+
+    return matchesSearch && matchesTechnology
+  })
 
   return (
     <main className="min-h-[calc(100vh-64px)] bg-zinc-950">
@@ -75,93 +94,125 @@ function Explore() {
 
             <input
               type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
               placeholder="Search projects..."
               className="w-full bg-transparent text-sm text-zinc-200 outline-none placeholder:text-zinc-600"
             />
 
           </div>
 
-          <select className="h-10 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-400 outline-none">
+          <select
+            value={technology}
+            onChange={(e) => setTechnology(e.target.value)}
+            className="h-10 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-400 outline-none"
+          >
             <option>All technologies</option>
             <option>React</option>
             <option>JavaScript</option>
             <option>Node.js</option>
             <option>Firebase</option>
+            <option>Tailwind</option>
           </select>
 
         </div>
 
+        {/* Loading */}
+        {loading && (
+          <div className="border-t border-zinc-800 py-16 text-center">
+            <p className="text-sm text-zinc-600">
+              Loading projects...
+            </p>
+          </div>
+        )}
+
+        {/* Empty */}
+        {!loading && filteredProjects.length === 0 && (
+          <div className="border-t border-zinc-800 py-16 text-center">
+            <p className="text-sm text-zinc-500">
+              No projects found.
+            </p>
+          </div>
+        )}
+
         {/* Projects */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {!loading && filteredProjects.length > 0 && (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 
-          {projects.map((project) => (
-            <article
-              key={project.id}
-              className="flex min-h-[285px] flex-col rounded-lg border border-zinc-800 bg-zinc-900/50 p-5 transition hover:-translate-y-0.5 hover:border-zinc-700"
-            >
+            {filteredProjects.map((project) => (
+              <article
+                key={project.id}
+                className="flex min-h-[285px] flex-col rounded-lg border border-zinc-800 bg-zinc-900/50 p-5 transition hover:-translate-y-0.5 hover:border-zinc-700"
+              >
 
-              <div className="mb-6 flex items-center justify-between">
+                {/* Top */}
+                <div className="mb-6 flex items-center justify-between">
 
-                <span className="font-mono text-[10px] tracking-widest text-zinc-600">
-                  PROJECT
-                </span>
-
-                <button className="text-xs text-zinc-500 transition hover:text-white">
-                  ♡ {project.likes}
-                </button>
-
-              </div>
-
-              <h2 className="text-lg font-medium tracking-tight text-zinc-200">
-                {project.title}
-              </h2>
-
-              <p className="mt-2 text-sm leading-6 text-zinc-500">
-                {project.description}
-              </p>
-
-              {/* Technologies */}
-              <div className="mt-5 flex flex-wrap gap-1.5">
-
-                {project.technologies.map((technology) => (
-                  <span
-                    key={technology}
-                    className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 font-mono text-[10px] text-zinc-500"
-                  >
-                    {technology}
+                  <span className="font-mono text-[10px] tracking-widest text-zinc-600">
+                    PROJECT
                   </span>
-                ))}
-
-              </div>
-
-              {/* Footer */}
-              <div className="mt-auto flex items-center justify-between pt-6">
-
-                <div className="flex items-center gap-2">
-
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 text-[10px] text-zinc-400">
-                    {project.author.charAt(0)}
-                  </div>
 
                   <span className="text-xs text-zinc-500">
-                    {project.author}
+                    ♡ {project.likes || 0}
                   </span>
 
                 </div>
 
-                <Link
-                  to={`/projects/${project.id}`}
-                  className="text-xs text-zinc-400 transition hover:text-white"
-                >
-                  View project →
-                </Link>
+                {/* Title */}
+                <h2 className="text-lg font-medium tracking-tight text-zinc-200">
+                  {project.title}
+                </h2>
 
-              </div>
+                {/* Description */}
+                <p className="mt-2 text-sm leading-6 text-zinc-500">
+                  {project.description}
+                </p>
 
-            </article>
-          ))}
+                {/* Technologies */}
+                <div className="mt-5 flex flex-wrap gap-1.5">
 
-        </div>
+                  {project.technologies?.map((technology) => (
+                    <span
+                      key={technology}
+                      className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 font-mono text-[10px] text-zinc-500"
+                    >
+                      {technology}
+                    </span>
+                  ))}
+
+                </div>
+
+                {/* Footer */}
+                <div className="mt-auto flex items-center justify-between pt-6">
+
+                  <div className="flex items-center gap-2">
+
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 text-[10px] text-zinc-400">
+                      {project.ownerEmail
+                        ?.charAt(0)
+                        .toUpperCase()}
+                    </div>
+
+                    <span className="max-w-32 truncate text-xs text-zinc-500">
+                      {project.ownerEmail}
+                    </span>
+
+                  </div>
+
+                  <Link
+                    to={`/projects/${project.id}`}
+                    className="text-xs text-zinc-400 transition hover:text-white"
+                  >
+                    View project →
+                  </Link>
+
+                </div>
+
+              </article>
+            ))}
+
+          </div>
+        )}
 
       </div>
     </main>

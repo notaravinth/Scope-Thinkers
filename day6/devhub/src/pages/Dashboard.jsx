@@ -1,27 +1,51 @@
+import { useContext, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore"
+
+import { db } from "../firebase"
+import { AuthContext } from "../context/AuthContext"
 
 function Dashboard() {
-  const projects = [
-    {
-      id: "1",
-      title: "My Portfolio",
-      description:
-        "Personal developer portfolio built with React.",
-      technologies: ["React", "Vite"],
-      likes: 18,
-    },
-    {
-      id: "2",
-      title: "Task Manager",
-      description:
-        "A productivity application for managing daily tasks.",
-      technologies: ["React", "Firebase"],
-      likes: 9,
-    },
-  ]
+  const { user } = useContext(AuthContext)
+
+  const [projects, setProjects] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchProjects = async () => {
+      if (!user) return
+
+      try {
+        const projectsQuery = query(
+          collection(db, "projects"),
+          where("ownerId", "==", user.uid)
+        )
+
+        const snapshot = await getDocs(projectsQuery)
+
+        const projectData = snapshot.docs.map((document) => ({
+          id: document.id,
+          ...document.data(),
+        }))
+
+        setProjects(projectData)
+      } catch (error) {
+        console.error("Error fetching projects:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchProjects()
+  }, [user])
 
   const totalLikes = projects.reduce(
-    (total, project) => total + project.likes,
+    (total, project) => total + (project.likes || 0),
     0
   )
 
@@ -80,69 +104,98 @@ function Dashboard() {
 
         </div>
 
-        {/* Projects */}
-        <div className="border-t border-zinc-800">
+        {/* Loading */}
+        {loading && (
+          <div className="border-t border-zinc-800 py-10 text-center">
+            <p className="text-sm text-zinc-600">
+              Loading your projects...
+            </p>
+          </div>
+        )}
 
-          {projects.map((project) => (
-            <article
-              key={project.id}
-              className="flex items-center justify-between border-b border-zinc-800 py-5"
+        {/* Empty */}
+        {!loading && projects.length === 0 && (
+          <div className="border-t border-zinc-800 py-16 text-center">
+            <p className="text-sm text-zinc-500">
+              You haven't published any projects yet.
+            </p>
+
+            <Link
+              to="/projects/new"
+              className="mt-4 inline-block text-xs text-zinc-300 transition hover:text-white"
             >
+              Create your first project →
+            </Link>
+          </div>
+        )}
 
-              <div className="flex items-start gap-4">
+        {/* Projects */}
+        {!loading && projects.length > 0 && (
+          <div className="border-t border-zinc-800">
 
-                <div className="flex h-10 w-10 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 font-mono text-sm text-zinc-500">
-                  {project.title.charAt(0)}
-                </div>
+            {projects.map((project) => (
+              <article
+                key={project.id}
+                className="flex items-center justify-between border-b border-zinc-800 py-5"
+              >
 
-                <div>
+                <div className="flex items-start gap-4">
 
-                  <h2 className="text-sm font-medium text-zinc-200">
-                    {project.title}
-                  </h2>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 font-mono text-sm text-zinc-500">
+                    {project.title?.charAt(0).toUpperCase()}
+                  </div>
 
-                  <p className="mt-1 text-xs text-zinc-600">
-                    {project.description}
-                  </p>
+                  <div>
 
-                  <div className="mt-3 flex gap-1.5">
-                    {project.technologies.map((technology) => (
-                      <span
-                        key={technology}
-                        className="rounded border border-zinc-800 px-2 py-1 font-mono text-[10px] text-zinc-600"
-                      >
-                        {technology}
-                      </span>
-                    ))}
+                    <h2 className="text-sm font-medium text-zinc-200">
+                      {project.title}
+                    </h2>
+
+                    <p className="mt-1 text-xs text-zinc-600">
+                      {project.description}
+                    </p>
+
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {project.technologies?.map((technology) => (
+                        <span
+                          key={technology}
+                          className="rounded border border-zinc-800 px-2 py-1 font-mono text-[10px] text-zinc-600"
+                        >
+                          {technology}
+                        </span>
+                      ))}
+                    </div>
+
                   </div>
 
                 </div>
 
-              </div>
+                <div className="flex items-center gap-2">
 
-              <div className="flex items-center gap-2">
+                  <span className="mr-3 text-xs text-zinc-600">
+                    ♡ {project.likes || 0}
+                  </span>
 
-                <span className="mr-3 text-xs text-zinc-600">
-                  ♡ {project.likes}
-                </span>
+                  <Link
+                    to={`/projects/${project.id}`}
+                    className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-500 transition hover:border-zinc-700 hover:text-white"
+                  >
+                    View
+                  </Link>
 
-                <Link
-                  to={`/projects/${project.id}`}
-                  className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-500 transition hover:border-zinc-700 hover:text-white"
-                >
-                  View
-                </Link>
+                  <button
+                    className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-500 transition hover:border-zinc-700 hover:text-white"
+                  >
+                    Edit
+                  </button>
 
-                <button className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-500 transition hover:border-zinc-700 hover:text-white">
-                  Edit
-                </button>
+                </div>
 
-              </div>
+              </article>
+            ))}
 
-            </article>
-          ))}
-
-        </div>
+          </div>
+        )}
 
       </div>
     </main>
