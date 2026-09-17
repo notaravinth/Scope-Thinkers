@@ -1,48 +1,17 @@
-import { useContext, useEffect, useState } from "react"
+import { useContext } from "react"
 import { Link } from "react-router-dom"
-import {
-  collection,
-  getDocs,
-  query,
-  where,
-} from "firebase/firestore"
 
-import { db } from "../firebase"
 import { AuthContext } from "../context/AuthContext"
+import useProjects from "../hooks/useProjects"
 
 function Dashboard() {
   const { user } = useContext(AuthContext)
 
-  const [projects, setProjects] = useState([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const fetchProjects = async () => {
-      if (!user) return
-
-      try {
-        const projectsQuery = query(
-          collection(db, "projects"),
-          where("ownerId", "==", user.uid)
-        )
-
-        const snapshot = await getDocs(projectsQuery)
-
-        const projectData = snapshot.docs.map((document) => ({
-          id: document.id,
-          ...document.data(),
-        }))
-
-        setProjects(projectData)
-      } catch (error) {
-        console.error("Error fetching projects:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchProjects()
-  }, [user])
+  const {
+    projects,
+    loading,
+    error,
+  } = useProjects(user?.uid)
 
   const totalLikes = projects.reduce(
     (total, project) => total + (project.likes || 0),
@@ -53,7 +22,6 @@ function Dashboard() {
     <main className="min-h-[calc(100vh-64px)] bg-zinc-950">
       <div className="mx-auto max-w-6xl px-6 py-16">
 
-        {/* Header */}
         <div className="mb-10 flex items-end justify-between">
 
           <div>
@@ -79,7 +47,6 @@ function Dashboard() {
 
         </div>
 
-        {/* Stats */}
         <div className="mb-10 flex gap-3">
 
           <div className="w-44 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
@@ -104,7 +71,6 @@ function Dashboard() {
 
         </div>
 
-        {/* Loading */}
         {loading && (
           <div className="border-t border-zinc-800 py-10 text-center">
             <p className="text-sm text-zinc-600">
@@ -113,8 +79,15 @@ function Dashboard() {
           </div>
         )}
 
-        {/* Empty */}
-        {!loading && projects.length === 0 && (
+        {!loading && error && (
+          <div className="border-t border-zinc-800 py-10 text-center">
+            <p className="text-sm text-red-400">
+              {error}
+            </p>
+          </div>
+        )}
+
+        {!loading && !error && projects.length === 0 && (
           <div className="border-t border-zinc-800 py-16 text-center">
             <p className="text-sm text-zinc-500">
               You haven't published any projects yet.
@@ -129,8 +102,7 @@ function Dashboard() {
           </div>
         )}
 
-        {/* Projects */}
-        {!loading && projects.length > 0 && (
+        {!loading && !error && projects.length > 0 && (
           <div className="border-t border-zinc-800">
 
             {projects.map((project) => (

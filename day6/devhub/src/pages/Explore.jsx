@@ -1,38 +1,13 @@
-import { useEffect, useState } from "react"
-import { collection, getDocs } from "firebase/firestore"
+import { useState } from "react"
 import { Link } from "react-router-dom"
 
-import { db } from "../firebase"
+import useProjects from "../hooks/useProjects"
 
 function Explore() {
-  const [projects, setProjects] = useState([])
-  const [loading, setLoading] = useState(true)
+  const { projects, loading, error } = useProjects()
 
   const [search, setSearch] = useState("")
   const [technology, setTechnology] = useState("All technologies")
-
-  useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const snapshot = await getDocs(
-          collection(db, "projects")
-        )
-
-        const projectData = snapshot.docs.map((document) => ({
-          id: document.id,
-          ...document.data(),
-        }))
-
-        setProjects(projectData)
-      } catch (error) {
-        console.error("Error fetching projects:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchProjects()
-  }, [])
 
   const filteredProjects = projects.filter((project) => {
     const matchesSearch =
@@ -54,7 +29,6 @@ function Explore() {
     <main className="min-h-[calc(100vh-64px)] bg-zinc-950">
       <div className="mx-auto max-w-6xl px-6 py-16">
 
-        {/* Header */}
         <div className="mb-10 flex items-end justify-between">
 
           <div>
@@ -83,7 +57,6 @@ function Explore() {
 
         </div>
 
-        {/* Search / Filter */}
         <div className="mb-5 flex gap-2">
 
           <div className="flex h-10 flex-1 items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900 px-3">
@@ -117,7 +90,6 @@ function Explore() {
 
         </div>
 
-        {/* Loading */}
         {loading && (
           <div className="border-t border-zinc-800 py-16 text-center">
             <p className="text-sm text-zinc-600">
@@ -126,8 +98,15 @@ function Explore() {
           </div>
         )}
 
-        {/* Empty */}
-        {!loading && filteredProjects.length === 0 && (
+        {!loading && error && (
+          <div className="border-t border-zinc-800 py-16 text-center">
+            <p className="text-sm text-red-400">
+              {error}
+            </p>
+          </div>
+        )}
+
+        {!loading && !error && filteredProjects.length === 0 && (
           <div className="border-t border-zinc-800 py-16 text-center">
             <p className="text-sm text-zinc-500">
               No projects found.
@@ -135,8 +114,7 @@ function Explore() {
           </div>
         )}
 
-        {/* Projects */}
-        {!loading && filteredProjects.length > 0 && (
+        {!loading && !error && filteredProjects.length > 0 && (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 
             {filteredProjects.map((project) => (
@@ -145,7 +123,6 @@ function Explore() {
                 className="flex min-h-[285px] flex-col rounded-lg border border-zinc-800 bg-zinc-900/50 p-5 transition hover:-translate-y-0.5 hover:border-zinc-700"
               >
 
-                {/* Top */}
                 <div className="mb-6 flex items-center justify-between">
 
                   <span className="font-mono text-[10px] tracking-widest text-zinc-600">
@@ -158,19 +135,15 @@ function Explore() {
 
                 </div>
 
-                {/* Title */}
                 <h2 className="text-lg font-medium tracking-tight text-zinc-200">
                   {project.title}
                 </h2>
 
-                {/* Description */}
                 <p className="mt-2 text-sm leading-6 text-zinc-500">
                   {project.description}
                 </p>
 
-                {/* Technologies */}
                 <div className="mt-5 flex flex-wrap gap-1.5">
-
                   {project.technologies?.map((technology) => (
                     <span
                       key={technology}
@@ -179,10 +152,8 @@ function Explore() {
                       {technology}
                     </span>
                   ))}
-
                 </div>
 
-                {/* Footer */}
                 <div className="mt-auto flex items-center justify-between pt-6">
 
                   <div className="flex items-center gap-2">

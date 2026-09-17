@@ -30,7 +30,7 @@ function Auth() {
     try {
       if (isSignUp) {
         await createUserWithEmailAndPassword(
-          auth,
+          auth, 
           email,
           password
         )
