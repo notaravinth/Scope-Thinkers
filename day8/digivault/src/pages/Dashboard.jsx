@@ -1,41 +1,60 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { signOut } from "firebase/auth";
 import UploadForm from "../components/UploadForm";
 import { supabase } from "../supabase/supabase";
+import { auth } from "../firebase/firebase";
 
 function Dashboard() {
-  const [documents, setDocuments] = useState([
-    {
-      id: 1,
-      name: "Aadhar Card",
-      type: "Identity",
-      issuer: "UIDAI",
-      status: "approved",
-    },
-    {
-      id: 2,
-      name: "PAN Card",
-      type: "Identity",
-      issuer: "Income Tax Department",
-      status: "pending",
-    },
-    {
-      id: 3,
-      name: "Degree Certificate",
-      type: "Education",
-      issuer: "SRM University",
-      status: "approved",
-    },
-    {
-      id: 4,
-      name: "Driving License",
-      type: "Government",
-      issuer: "Transport Department",
-      status: "rejected",
-    },
-  ]);
-
+  const [documents, setDocuments] = useState([]);
   const [filter, setFilter] = useState("All");
   const [showUploadForm, setShowUploadForm] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function fetchDocuments() {
+    if (!auth.currentUser) {
+      setError("You must be logged in to view your documents.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const userId = auth.currentUser.uid;
+
+      const { data, error } = await supabase
+        .from("documents")
+        .select("*")
+        .eq("user_id", userId)
+        .order("uploaded_at", { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      setDocuments(data || []);
+    } catch (error) {
+      console.error("Error fetching documents:", error);
+      setError("Unable to load your documents.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
+
+  async function handleLogout() {
+    try {
+      await signOut(auth);
+      window.location.href = "/login";
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  }
 
   const filteredDocuments =
     filter === "All"
@@ -56,20 +75,12 @@ function Dashboard() {
     (document) => document.status === "rejected"
   ).length;
 
-  async function testSupabase() {
-    const { data, error } = await supabase.storage
-      .from("digivault")
-      .list();
-
-    console.log("Supabase data:", data);
-    console.log("Supabase error:", error);
-  }
-
   return (
     <div className="min-h-screen bg-gray-100">
 
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
+
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
               DigiVault
@@ -80,16 +91,30 @@ function Dashboard() {
             </p>
           </div>
 
-          <button
-            onClick={() => setShowUploadForm(true)}
-            className="px-5 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
-          >
-            + Upload Document
-          </button>
+          <div className="flex items-center gap-3">
+
+            <button
+              onClick={handleLogout}
+              className="px-4 py-3 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200"
+            >
+              Logout
+            </button>
+
+            <button
+              onClick={() => setShowUploadForm(true)}
+              className="px-5 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+            >
+              + Upload Document
+            </button>
+
+          </div>
+
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-8">
+
+        {/* Statistics */}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
 
@@ -125,6 +150,8 @@ function Dashboard() {
 
         </div>
 
+        {/* Filters */}
+
         <div className="flex flex-wrap items-center gap-3 mb-6">
 
           {["All", "approved", "pending", "rejected"].map(
@@ -146,76 +173,154 @@ function Dashboard() {
             )
           )}
 
-          <button
-            onClick={testSupabase}
-            className="px-4 py-2 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700"
-          >
-            Test Supabase
-          </button>
-
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {/* Error */}
 
-          {filteredDocuments.map((document) => (
-            <div
-              key={document.id}
-              className="bg-white rounded-xl p-6 shadow-sm"
-            >
-              <div className="flex items-start justify-between">
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl p-4 mb-6">
+            {error}
+          </div>
+        )}
 
-                <div>
-                  <h2 className="text-lg font-bold text-gray-900">
-                    {document.name}
-                  </h2>
+        {/* Loading */}
 
-                  <p className="text-sm text-gray-500 mt-1">
-                    {document.type}
-                  </p>
-                </div>
-
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                    document.status === "approved"
-                      ? "bg-green-100 text-green-700"
-                      : document.status === "pending"
-                      ? "bg-yellow-100 text-yellow-700"
-                      : "bg-red-100 text-red-700"
-                  }`}
-                >
-                  {document.status}
-                </span>
-
-              </div>
-
-              <div className="mt-5">
-                <p className="text-sm text-gray-500">
-                  Issued by
-                </p>
-
-                <p className="font-medium text-gray-800 mt-1">
-                  {document.issuer}
-                </p>
-              </div>
-
-            </div>
-          ))}
-
-        </div>
-
-        {filteredDocuments.length === 0 && (
+        {loading ? (
           <div className="bg-white rounded-xl p-10 text-center">
             <p className="text-gray-500">
-              No documents found.
+              Loading your documents...
             </p>
           </div>
+        ) : (
+
+          <>
+
+            {/* Documents */}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+
+              {filteredDocuments.map((document) => (
+                <div
+                  key={document.id}
+                  className="bg-white rounded-xl p-6 shadow-sm"
+                >
+
+                  <div className="flex items-start justify-between">
+
+                    <div>
+                      <h2 className="text-lg font-bold text-gray-900">
+                        {document.name}
+                      </h2>
+
+                      <p className="text-sm text-gray-500 mt-1">
+                        {document.type}
+                      </p>
+                    </div>
+
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        document.status === "approved"
+                          ? "bg-green-100 text-green-700"
+                          : document.status === "pending"
+                          ? "bg-yellow-100 text-yellow-700"
+                          : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      {document.status}
+                    </span>
+
+                  </div>
+
+                  <div className="mt-5">
+
+                    <p className="text-sm text-gray-500">
+                      Issued by
+                    </p>
+
+                    <p className="font-medium text-gray-800 mt-1">
+                      {document.issuer}
+                    </p>
+
+                  </div>
+
+                  <div className="mt-4">
+
+                    <p className="text-sm text-gray-500">
+                      Issue Date
+                    </p>
+
+                    <p className="font-medium text-gray-800 mt-1">
+                      {document.issue_date}
+                    </p>
+
+                  </div>
+
+                  {document.expiry_date && (
+                    <div className="mt-4">
+
+                      <p className="text-sm text-gray-500">
+                        Expiry Date
+                      </p>
+
+                      <p className="font-medium text-gray-800 mt-1">
+                        {document.expiry_date}
+                      </p>
+
+                    </div>
+                  )}
+
+                  {document.status === "rejected" &&
+                    document.rejection_reason && (
+                      <div className="mt-4 rounded-lg bg-red-50 p-3">
+
+                        <p className="text-sm font-medium text-red-700">
+                          Rejection Reason
+                        </p>
+
+                        <p className="text-sm text-red-600 mt-1">
+                          {document.rejection_reason}
+                        </p>
+
+                      </div>
+                    )}
+
+                </div>
+              ))}
+
+            </div>
+
+            {/* Empty State */}
+
+            {filteredDocuments.length === 0 && (
+              <div className="bg-white rounded-xl p-10 text-center">
+
+                <p className="text-gray-500">
+                  No documents found.
+                </p>
+
+                {filter === "All" && (
+                  <p className="text-sm text-gray-400 mt-2">
+                    Upload your first document to get started.
+                  </p>
+                )}
+
+              </div>
+            )}
+
+          </>
+
         )}
 
       </main>
 
+      {/* Upload Form */}
+
       {showUploadForm && (
         <UploadForm
-          onClose={() => setShowUploadForm(false)}
+          onClose={() => {
+            setShowUploadForm(false);
+            fetchDocuments();
+          }}
         />
       )}
 

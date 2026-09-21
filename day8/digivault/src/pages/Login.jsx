@@ -6,6 +6,8 @@ import { Link, useNavigate } from "react-router-dom";
 function Login() {
   const navigate = useNavigate();
 
+  const ADMIN_EMAIL = "admin@digivault.com";
+
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -69,7 +71,15 @@ function Login() {
         formData.password
       );
 
-      navigate("/dashboard");
+      // Check whether the logged-in user is the admin
+      if (
+        formData.email.trim().toLowerCase() ===
+        ADMIN_EMAIL.toLowerCase()
+      ) {
+        navigate("/admin");
+      } else {
+        navigate("/dashboard");
+      }
     } catch (error) {
       if (
         error.code === "auth/invalid-credential" ||
@@ -173,6 +183,7 @@ function Login() {
 
         <p className="text-center text-sm text-gray-500 mt-6">
           Don't have an account?{" "}
+
           <Link
             to="/signup"
             className="font-semibold text-blue-600 hover:text-blue-700"

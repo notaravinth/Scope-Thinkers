@@ -115,9 +115,6 @@ function UploadForm({ onClose }) {
       // Store files inside the user's folder
       const filePath = `${userId}/${fileName}`;
 
-      // --------------------------------
-      // 1. Upload file to Supabase Storage
-      // --------------------------------
 
       const { error: uploadError } = await supabase.storage
         .from("digivault")
@@ -127,9 +124,6 @@ function UploadForm({ onClose }) {
         throw uploadError;
       }
 
-      // --------------------------------
-      // 2. Get public URL
-      // --------------------------------
 
       const {
         data: { publicUrl },
@@ -137,10 +131,6 @@ function UploadForm({ onClose }) {
         .from("digivault")
         .getPublicUrl(filePath);
 
-      // --------------------------------
-      // 3. Save document information
-      //    to Supabase database
-      // --------------------------------
 
       const { error: databaseError } = await supabase
         .from("documents")
