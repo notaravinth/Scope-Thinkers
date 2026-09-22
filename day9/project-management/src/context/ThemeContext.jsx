@@ -1,0 +1,45 @@
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
+
+const ThemeContext = createContext();
+
+export function ThemeProvider({ children }) {
+  const [darkMode, setDarkMode] = useState(() => {
+    return localStorage.getItem("projectflow-theme") === "dark";
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+
+    if (darkMode) {
+      root.classList.add("dark");
+      localStorage.setItem("projectflow-theme", "dark");
+    } else {
+      root.classList.remove("dark");
+      localStorage.setItem("projectflow-theme", "light");
+    }
+  }, [darkMode]);
+
+  function toggleTheme() {
+    setDarkMode((previous) => !previous);
+  }
+
+  return (
+    <ThemeContext.Provider
+      value={{
+        darkMode,
+        toggleTheme,
+      }}
+    >
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+export function useTheme() {
+  return useContext(ThemeContext);
+}

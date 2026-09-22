@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+html {
+  background-color: #f9fafb;
+}
+
+html.dark {
+  background-color: #111827;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background-color: #f9fafb;
+  color: #111827;
+  transition:
+    background-color 200ms ease,
+    color 200ms ease;
+}
+
+html.dark body {
+  background-color: #111827;
+  color: #f9fafb;
+}
+
+/* Pagination */
+
+.project-pagination {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.project-pagination .rc-pagination-prev,
+.project-pagination .rc-pagination-next{
+    display: none;
+}
+
+.project-pagination .rc-pagination-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
+.project-pagination .rc-pagination-item a,
+.project-pagination .rc-pagination-prev button,
+.project-pagination .rc-pagination-next button {
+  color: #6b7280;
+  text-decoration: none;
+}
+
+.project-pagination .rc-pagination-item-active {
+  background: #111827;
+  border-color: #111827;
+}
+
+.project-pagination .rc-pagination-item-active a {
+  color: #ffffff;
+}
+
+.project-pagination .rc-pagination-disabled {
+  opacity: 0.4;
+}
+
+html.dark .project-pagination .rc-pagination-prev,
+html.dark .project-pagination .rc-pagination-next,
+html.dark .project-pagination .rc-pagination-item {
+  border-color: #374151;
+  background: #1f2937;
+}
+
+html.dark .project-pagination .rc-pagination-item a,
+html.dark .project-pagination .rc-pagination-prev button,
+html.dark .project-pagination .rc-pagination-next button {
+  color: #d1d5db;
+}
+
+html.dark .project-pagination .rc-pagination-item-active {
+  background: #f9fafb;
+  border-color: #f9fafb;
+}
+
+html.dark .project-pagination .rc-pagination-item-active a {
+  color: #111827;
+}
