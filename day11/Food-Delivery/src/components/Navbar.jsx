@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import GooeyNav from "./react-bits/GooeyNav";
+import { useCart } from "../context/CartContext";
 
 const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
+
+  const { cartCount } = useCart();
 
   const [scrolled, setScrolled] = useState(false);
   const [activeSection, setActiveSection] = useState("home");
@@ -72,7 +75,7 @@ const Navbar = () => {
       id: "menu",
     },
     {
-      label: "Cart",
+      label: cartCount > 0 ? `Cart (${cartCount})` : "Cart",
       href: "/cart",
       id: "cart",
     },
@@ -103,20 +106,16 @@ const Navbar = () => {
         navigate("/");
 
         setTimeout(() => {
-          document
-            .getElementById("menu")
-            ?.scrollIntoView({
-              behavior: "smooth",
-              block: "start",
-            });
-        }, 100);
-      } else {
-        document
-          .getElementById("menu")
-          ?.scrollIntoView({
+          document.getElementById("menu")?.scrollIntoView({
             behavior: "smooth",
             block: "start",
           });
+        }, 100);
+      } else {
+        document.getElementById("menu")?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
       }
 
       return;
@@ -134,8 +133,8 @@ const Navbar = () => {
           isCartPage
             ? "border-black/20 bg-black/30 shadow-black/15"
             : scrolled
-            ? "border-black/10 bg-white/90 shadow-black/10"
-            : "border-white/30 bg-white/15"
+              ? "border-black/10 bg-white/90 shadow-black/10"
+              : "border-white/30 bg-white/15"
         }`}
       >
         <GooeyNav
@@ -146,12 +145,8 @@ const Navbar = () => {
           animationTime={500}
           timeVariance={250}
           colors={[1, 2, 3, 1, 2, 3]}
-          initialActiveIndex={
-            activeIndex >= 0 ? activeIndex : 0
-          }
-          activeIndex={
-            activeIndex >= 0 ? activeIndex : 0
-          }
+          initialActiveIndex={activeIndex >= 0 ? activeIndex : 0}
+          activeIndex={activeIndex >= 0 ? activeIndex : 0}
           scrolled={scrolled}
           onNavigate={handleNavigation}
         />

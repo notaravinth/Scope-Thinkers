@@ -55,7 +55,6 @@ const GooeyNav = ({
       ),
 
       time: t,
-
       scale: 1 + noise(0.2),
 
       color:
@@ -203,8 +202,11 @@ const GooeyNav = ({
       styles
     );
 
+    const label =
+      element.querySelector(".gooey-label");
+
     textRef.current.innerText =
-      element.innerText;
+      label?.innerText || element.innerText;
   };
 
   const handleClick = (e, index) => {
@@ -272,10 +274,6 @@ const GooeyNav = ({
     }
   };
 
-  /*
-   * Position the gooey effect
-   * whenever the active item changes.
-   */
   useEffect(() => {
     if (
       !navRef.current ||
@@ -323,10 +321,6 @@ const GooeyNav = ({
       resizeObserver.disconnect();
   }, [activeIndex]);
 
-  /*
-   * Reposition the effect when
-   * the navbar changes appearance.
-   */
   useEffect(() => {
     if (!navRef.current) return;
 
@@ -420,13 +414,9 @@ const GooeyNav = ({
 
           .effect.filter::before {
             content: "";
-
             position: absolute;
-
             inset: -75px;
-
             z-index: -2;
-
             background: transparent;
           }
 
@@ -470,7 +460,6 @@ const GooeyNav = ({
           .particle,
           .point {
             display: block;
-
             opacity: 0;
 
             width: 20px;
@@ -746,13 +735,40 @@ const GooeyNav = ({
                         )
                       }
                       className="
-                        inline-block
+                        inline-flex
+                        items-center
+                        gap-2
                         px-[1em]
                         py-[0.6em]
                         outline-none
+                        whitespace-nowrap
                       "
                     >
-                      {item.label}
+                      <span className="gooey-label">
+                        {item.label}
+                      </span>
+
+                      {item.badge != null && (
+                        <span
+                          className="
+                            inline-flex
+                            h-5
+                            min-w-5
+                            shrink-0
+                            items-center
+                            justify-center
+                            rounded-full
+                            bg-black
+                            px-1.5
+                            text-[10px]
+                            font-bold
+                            leading-none
+                            text-white
+                          "
+                        >
+                          {item.badge}
+                        </span>
+                      )}
                     </a>
                   </li>
                 );

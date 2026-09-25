@@ -6,6 +6,7 @@ import Hero from "./components/Hero";
 import Menu from "./components/Menu";
 import Cart from "./components/Cart";
 import FlowingMenu from "./components/react-bits/FlowingMenu";
+import OrderTracking from "./components/OrderTracking";
 
 const demoItems = [
   {
@@ -46,6 +47,8 @@ const App = () => {
         />
 
         <Route path="/cart" element={<Cart />} />
+
+        <Route path="/order/:orderId" element={<OrderTracking />} />
       </Routes>
     </>
   );
