@@ -20,7 +20,9 @@ export const useBookingStore = create((set) => ({
   toggleSeat: (seat) =>
     set((state) => ({
       selectedSeats: state.selectedSeats.includes(seat)
-        ? state.selectedSeats.filter((item) => item !== seat)
+        ? state.selectedSeats.filter(
+            (item) => item !== seat
+          )
         : [...state.selectedSeats, seat],
     })),
 
