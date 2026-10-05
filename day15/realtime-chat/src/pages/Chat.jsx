@@ -1,8 +1,5 @@
-import { useEffect, useState } from "react";
-import {
-  useDispatch,
-  useSelector,
-} from "react-redux";
+import { useEffect, useRef } from "react";
+import { useDispatch, useSelector } from "react-redux";
 
 import ChatSidebar from "../components/chat/ChatSidebar";
 import ChatHeader from "../components/chat/ChatHeader";
@@ -10,31 +7,31 @@ import MessageList from "../components/chat/MessageList";
 import MessageInput from "../components/chat/MessageInput";
 
 import {
-  setUsers,
-  setChats,
-  setActiveChat,
-  setMessages,
-  setChatLoading,
   addMessage,
+  setActiveChat,
+  setChats,
+  setMessages,
+  setUsers,
 } from "../redux/chatSlice";
 
 import {
-  getChatterUsers,
   createChat,
+  getChatterUsers,
   subscribeToUserChats,
 } from "../services/chatService";
 
 import {
   connectWebSocket,
-  subscribeToWebSocket,
   requestChatMessages,
+  subscribeToConnection,
+  subscribeToWebSocket,
 } from "../services/websocketService";
 
 const Chat = () => {
   const dispatch = useDispatch();
 
-  const { user } = useSelector(
-    (state) => state.auth
+  const currentUser = useSelector(
+    (state) => state.auth.user
   );
 
   const {
@@ -42,110 +39,176 @@ const Chat = () => {
     chats,
     activeChat,
     messages,
-    loading,
   } = useSelector(
     (state) => state.chat
   );
 
-  const [search, setSearch] =
-    useState("");
+  /*
+   * ==================================================
+   * ACTIVE CHAT REF
+   * ==================================================
+   *
+   * We update this during render instead of inside
+   * useEffect.
+   *
+   * This guarantees that the WebSocket listener always
+   * has the latest active chat ID.
+   */
+
+  const activeChatIdRef = useRef(null);
+
+  activeChatIdRef.current =
+    activeChat?.id ||
+    activeChat?.chatId ||
+    null;
 
   /*
-   * Load users
+   * ==================================================
+   * LOAD USERS
+   * ==================================================
    */
+
   useEffect(() => {
-    if (!user?.uid) {
+    if (!currentUser?.uid) {
       return;
     }
 
     const loadUsers = async () => {
       try {
-        dispatch(
-          setChatLoading(true)
-        );
-
-        const usersData =
+        const fetchedUsers =
           await getChatterUsers(
-            user.uid
+            currentUser.uid
           );
 
         dispatch(
-          setUsers(usersData)
+          setUsers(fetchedUsers)
         );
       } catch (error) {
         console.error(
           "Failed to load users:",
           error
         );
-      } finally {
-        dispatch(
-          setChatLoading(false)
-        );
       }
     };
 
     loadUsers();
-  }, [user?.uid, dispatch]);
+  }, [
+    currentUser?.uid,
+    dispatch,
+  ]);
 
   /*
-   * Subscribe to chats.
+   * ==================================================
+   * SUBSCRIBE TO FIRESTORE CHAT LIST
+   * ==================================================
    *
-   * This keeps the sidebar updated.
+   * This is responsible for keeping the sidebar
+   * updated.
    */
+
   useEffect(() => {
-    if (!user?.uid) {
+    if (!currentUser?.uid) {
       return;
     }
 
     const unsubscribe =
       subscribeToUserChats(
-        user.uid,
-        (chatData) => {
+        currentUser.uid,
+        (fetchedChats) => {
+          console.log(
+            "FIRESTORE CHATS UPDATED:",
+            fetchedChats
+          );
+
           dispatch(
-            setChats(chatData)
+            setChats(fetchedChats)
           );
         }
       );
 
     return () => {
-      unsubscribe();
+      unsubscribe?.();
     };
-  }, [user?.uid, dispatch]);
+  }, [
+    currentUser?.uid,
+    dispatch,
+  ]);
 
   /*
-   * Connect WebSocket
+   * ==================================================
+   * CONNECT TO WEBSOCKET
+   * ==================================================
    */
+
   useEffect(() => {
-    if (!user?.uid) {
+    if (!currentUser?.uid) {
       return;
     }
+
+    let cancelled = false;
 
     const connect = async () => {
       try {
         await connectWebSocket();
 
-        console.log(
-          "Chat connected to WebSocket"
-        );
+        if (!cancelled) {
+          console.log(
+            "Chat connected to WebSocket"
+          );
+        }
       } catch (error) {
         console.error(
-          "WebSocket connection failed:",
+          "Failed to connect WebSocket:",
           error
         );
       }
     };
 
     connect();
-  }, [user?.uid]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currentUser?.uid,
+  ]);
 
   /*
-   * WebSocket listener
-   *
-   * IMPORTANT:
-   * activeChat is included in the dependency
-   * array so the listener always knows which
-   * conversation is currently open.
+   * ==================================================
+   * WEBSOCKET CONNECTION STATUS
+   * ==================================================
    */
+
+  useEffect(() => {
+    const unsubscribe =
+      subscribeToConnection(
+        (connected) => {
+          console.log(
+            "WebSocket connection status:",
+            connected
+          );
+        }
+      );
+
+    return unsubscribe;
+  }, []);
+
+  /*
+   * ==================================================
+   * REALTIME MESSAGE LISTENER
+   * ==================================================
+   *
+   * There are two message events:
+   *
+   * message_sent
+   *   -> message sent by this user
+   *
+   * new_message
+   *   -> message received from another user
+   *
+   * Both need to be added to Redux immediately.
+   */
+
   useEffect(() => {
     const unsubscribe =
       subscribeToWebSocket(
@@ -156,358 +219,415 @@ const Chat = () => {
           );
 
           /*
-           * Authentication
+           * Ignore non-message events.
            */
+
           if (
-            data.type ===
-            "authenticated"
+            data.type !==
+              "new_message" &&
+            data.type !==
+              "message_sent"
           ) {
             return;
           }
 
-          /*
-           * Message history
-           *
-           * requestChatMessages()
-           * handles the actual response.
-           */
-          if (
-            data.type ===
-            "messages_history"
-          ) {
-            console.log(
-              "HISTORY EVENT:",
+          const message =
+            data.message;
+
+          if (!message) {
+            console.warn(
+              "Message event had no message:",
               data
             );
 
             return;
           }
 
+          const currentChatId =
+            activeChatIdRef.current;
+
+          console.log(
+            "========================================"
+          );
+
+          console.log(
+            "REALTIME MESSAGE RECEIVED"
+          );
+
+          console.log(
+            "Message:",
+            message
+          );
+
+          console.log(
+            "Message chat ID:",
+            message.chatId
+          );
+
+          console.log(
+            "Active chat ID:",
+            currentChatId
+          );
+
+          console.log(
+            "Message event:",
+            data.type
+          );
+
+          console.log(
+            "========================================"
+          );
+
           /*
-           * Message sent by us
+           * Only put the message directly into the
+           * visible message list if it belongs to
+           * the currently open chat.
            */
+
           if (
-            data.type ===
-            "message_sent"
+            message.chatId ===
+            currentChatId
           ) {
-            const message =
-              data.message;
-
             console.log(
-              "MESSAGE SENT:",
-              message
+              "ADDING REALTIME MESSAGE TO REDUX"
             );
 
-            console.log(
-              "MESSAGE CHAT ID:",
-              message.chatId
+            dispatch(
+              addMessage(message)
             );
-
-            console.log(
-              "ACTIVE CHAT ID:",
-              activeChat?.id
-            );
-
-            if (
-              message.chatId ===
-              activeChat?.id
-            ) {
-              console.log(
-                "ADDING SENT MESSAGE"
-              );
-
-              dispatch(
-                addMessage(message)
-              );
-            }
 
             return;
           }
 
           /*
-           * New incoming message
+           * Message belongs to another conversation.
+           *
+           * The Firestore chat subscription will still
+           * update the sidebar.
            */
-          if (
-            data.type ===
-            "new_message"
-          ) {
-            const message =
-              data.message;
 
-            console.log(
-              "========== NEW MESSAGE =========="
-            );
-
-            console.log(
-              "Message:",
-              message
-            );
-
-            console.log(
-              "Message chat ID:",
-              message.chatId
-            );
-
-            console.log(
-              "Active chat ID:",
-              activeChat?.id
-            );
-
-            if (
-              message.chatId ===
-              activeChat?.id
-            ) {
-              console.log(
-                "ADDING INCOMING MESSAGE TO UI"
-              );
-
-              dispatch(
-                addMessage(message)
-              );
-            } else {
-              console.log(
-                "MESSAGE IS FOR ANOTHER CHAT"
-              );
-            }
-
-            return;
-          }
-
-          /*
-           * Server error
-           */
-          if (
-            data.type === "error"
-          ) {
-            console.error(
-              "WebSocket server error:",
-              data.message
-            );
-          }
+          console.log(
+            "MESSAGE IS FOR ANOTHER CHAT"
+          );
         }
       );
 
-    return () => {
-      unsubscribe();
-    };
-  }, [
-    activeChat?.id,
-    dispatch,
-  ]);
+    return unsubscribe;
+  }, [dispatch]);
 
   /*
-   * Load history whenever the
-   * active chat changes.
+   * ==================================================
+   * GET OTHER USER
+   * ==================================================
+   *
+   * ChatSidebar expects this function.
    */
-  useEffect(() => {
-    if (!activeChat?.id) {
-      dispatch(
-        setMessages([])
-      );
 
-      return;
+  const getOtherUser = (chat) => {
+    if (
+      !chat ||
+      !Array.isArray(
+        chat.participants
+      ) ||
+      !currentUser?.uid
+    ) {
+      return null;
     }
 
-    const chatId =
-      activeChat.id;
+    const otherUserId =
+      chat.participants.find(
+        (id) =>
+          id !== currentUser.uid
+      );
 
-    const loadMessages =
-      async () => {
+    if (!otherUserId) {
+      return null;
+    }
+
+    return (
+      users.find(
+        (user) =>
+          user.uid ===
+          otherUserId
+      ) || null
+    );
+  };
+
+  /*
+   * ==================================================
+   * SELECT EXISTING CHAT
+   * ==================================================
+   */
+
+  const handleSelectChat =
+    async (chat) => {
+      if (!chat) {
+        return;
+      }
+
+      console.log(
+        "SELECTED CHAT:",
+        chat
+      );
+
+      /*
+       * Some parts of the app may call the
+       * identifier `id`, while others may call it
+       * `chatId`.
+       *
+       * Normalize it here.
+       */
+
+      const normalizedChat = {
+        ...chat,
+
+        id:
+          chat.id ||
+          chat.chatId,
+      };
+
+      if (!normalizedChat.id) {
+        console.error(
+          "Selected chat has no ID:",
+          chat
+        );
+
+        return;
+      }
+
+      /*
+       * Make sure the other user is attached.
+       */
+
+      if (
+        !normalizedChat.otherUser
+      ) {
+        normalizedChat.otherUser =
+          getOtherUser(
+            normalizedChat
+          );
+      }
+
+      console.log(
+        "NORMALIZED CHAT:",
+        normalizedChat
+      );
+
+      /*
+       * Immediately change the active chat.
+       */
+
+      dispatch(
+        setActiveChat(
+          normalizedChat
+        )
+      );
+
+      try {
         console.log(
           "REQUESTING HISTORY FOR:",
-          chatId
+          normalizedChat.id
+        );
+
+        const history =
+          await requestChatMessages(
+            normalizedChat.id
+          );
+
+        console.log(
+          "HISTORY RETURNED:",
+          history
+        );
+
+        /*
+         * chatSlice.setMessages() merges this
+         * history with any realtime messages that
+         * arrived while history was loading.
+         */
+
+        dispatch(
+          setMessages(
+            history
+          )
+        );
+      } catch (error) {
+        console.error(
+          "Failed to load chat history:",
+          error
         );
 
         dispatch(
           setMessages([])
         );
-
-        try {
-          const history =
-            await requestChatMessages(
-              chatId
-            );
-
-          /*
-           * Make sure the user hasn't
-           * switched to another chat.
-           */
-          if (
-            activeChat?.id !==
-            chatId
-          ) {
-            return;
-          }
-
-          console.log(
-            "HISTORY RETURNED:",
-            history
-          );
-
-          dispatch(
-            setMessages(history)
-          );
-        } catch (error) {
-          console.error(
-            "Failed to load messages:",
-            error
-          );
-        }
-      };
-
-    loadMessages();
-  }, [
-    activeChat?.id,
-    dispatch,
-  ]);
+      }
+    };
 
   /*
-   * Select a user
+   * ==================================================
+   * SELECT USER / CREATE CHAT
+   * ==================================================
    */
+
   const handleSelectUser =
-    async (selectedUser) => {
-      if (!user?.uid) {
+    async (user) => {
+      if (
+        !currentUser?.uid ||
+        !user?.uid
+      ) {
         return;
       }
 
       try {
-        const chat =
-          await createChat(
-            user.uid,
-            selectedUser.uid
-          );
-
-        dispatch(
-          setMessages([])
+        console.log(
+          "OPENING CHAT WITH USER:",
+          user
         );
 
-        dispatch(
-          setActiveChat({
-            ...chat,
-            otherUser:
-              selectedUser,
-          })
+        const chat =
+          await createChat(
+            currentUser.uid,
+            user.uid
+          );
+
+        const normalizedChat = {
+          ...chat,
+
+          id:
+            chat.id ||
+            chat.chatId,
+
+          otherUser: user,
+        };
+
+        await handleSelectChat(
+          normalizedChat
         );
       } catch (error) {
         console.error(
-          "Failed to open chat:",
+          "Failed to create/open chat:",
           error
         );
       }
     };
 
   /*
-   * Get the other participant
+   * ==================================================
+   * ADD USER INFORMATION TO CHAT OBJECTS
+   * ==================================================
+   *
+   * Firestore stores participant IDs.
+   *
+   * The UI needs the actual user object.
    */
-  const getOtherUser = (
-    chat
-  ) => {
-    const otherUserId =
-      chat.participants.find(
-        (id) =>
-          id !== user.uid
-      );
 
-    return users.find(
-      (item) =>
-        item.uid === otherUserId
-    );
-  };
+  const chatsWithUsers =
+    chats.map((chat) => {
+      const otherUser =
+        chat.otherUser ||
+        getOtherUser(chat);
 
-  /*
-   * Select existing chat
-   */
-  const handleSelectChat = (
-    chat
-  ) => {
-    const otherUser =
-      getOtherUser(chat);
-
-    if (!otherUser) {
-      return;
-    }
-
-    dispatch(
-      setMessages([])
-    );
-
-    dispatch(
-      setActiveChat({
+      return {
         ...chat,
+
+        id:
+          chat.id ||
+          chat.chatId,
+
         otherUser,
-      })
-    );
-  };
+      };
+    });
 
   /*
-   * Search users
+   * ==================================================
+   * ACTIVE CHAT WITH USER INFORMATION
+   * ==================================================
    */
-  const filteredUsers =
-    users.filter((item) =>
-      item.name
-        ?.toLowerCase()
-        .includes(
-          search.toLowerCase()
-        )
-    );
+
+  const activeChatWithUser =
+    activeChat
+      ? {
+          ...activeChat,
+
+          id:
+            activeChat.id ||
+            activeChat.chatId,
+
+          otherUser:
+            activeChat.otherUser ||
+            getOtherUser(
+              activeChat
+            ),
+        }
+      : null;
+
+  /*
+   * ==================================================
+   * RENDER
+   * ==================================================
+   */
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#2B2129] text-[#E5D1B8]">
+    <div className="flex h-screen w-full overflow-hidden bg-[#2B2129] text-[#E5D1B8]">
       <ChatSidebar
-        currentUser={user}
-        users={filteredUsers}
-        chats={chats}
-        activeChat={activeChat}
-        search={search}
-        setSearch={setSearch}
-        onSelectUser={
-          handleSelectUser
+        users={users}
+        chats={chatsWithUsers}
+        activeChat={
+          activeChatWithUser
         }
-        onSelectChat={
-          handleSelectChat
+        currentUserId={
+          currentUser?.uid
         }
         getOtherUser={
           getOtherUser
         }
-        loading={loading}
+        onSelectChat={
+          handleSelectChat
+        }
+        onSelectUser={
+          handleSelectUser
+        }
       />
 
-      <main className="flex min-w-0 flex-1 flex-col">
-        {activeChat ? (
+      <main className="flex min-w-0 flex-1 flex-col bg-[#2B2129]">
+        {activeChatWithUser ? (
           <>
             <ChatHeader
-              chat={activeChat}
+              chat={
+                activeChatWithUser
+              }
             />
 
             <MessageList
               messages={messages}
               currentUserId={
-                user.uid
+                currentUser?.uid
               }
             />
 
             <MessageInput
-              chat={activeChat}
+              chat={
+                activeChatWithUser
+              }
               currentUserId={
-                user.uid
+                currentUser?.uid
               }
             />
           </>
         ) : (
           <div className="flex flex-1 items-center justify-center">
             <div className="text-center">
-              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl border border-[#C2956E] bg-[#E5D1B8]/5 text-2xl">
+              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#E5D1B8]/5 text-2xl">
                 💬
               </div>
 
-              <h2 className="text-xl font-semibold text-[#E5D1B8]">
-                Welcome to Chatter
+              <h2 className="text-lg font-semibold text-[#E5D1B8]">
+                Select a conversation
               </h2>
 
               <p className="mt-2 text-sm text-[#C2956E]">
-                Select someone to
-                start a
-                conversation.
+                Choose someone from your
+                conversations to start
+                chatting.
               </p>
             </div>
           </div>
