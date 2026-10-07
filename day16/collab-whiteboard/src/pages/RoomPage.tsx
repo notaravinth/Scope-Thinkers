@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
 } from "react";
+
 import {
   useNavigate,
   useParams,
@@ -10,57 +11,43 @@ import {
 import Canvas from "../components/Canvas";
 import Toolbar from "../components/Toolbar";
 import useWebSocket from "../hooks/useWebSocket";
+
 import { loadBoard } from "../db/boardStorage";
-import { useWhiteboardStore } from "../store/whiteboardStore";
+
+import {
+  useWhiteboardStore,
+} from "../store/whiteboardStore";
+
+import type { ServerMessage } from "../types/websocket";
+
 import type { Shape } from "../types/whiteboard";
 
-export type ServerMessage =
-  | {
-      type: "ROOM_JOINED";
-      roomId: string;
-    }
-  | {
-      type: "ROOM_STATE";
-      roomId: string;
-      shapes: Shape[];
-    }
-  | {
-      type: "ADD_SHAPE";
-      roomId: string;
-      shape: Shape;
-    }
-  | {
-      type: "UPDATE_SHAPE";
-      roomId: string;
-      shape: Shape;
-    }
-  | {
-      type: "DELETE_SHAPE";
-      roomId: string;
-      shapeId: string;
-    };
-
 const RoomPage = () => {
-  const { roomId } =
-    useParams<{
-      roomId: string;
-    }>();
+  const {
+    roomId,
+  } = useParams<{
+    roomId: string;
+  }>();
 
-  const navigate = useNavigate();
+  const navigate =
+    useNavigate();
 
   const setShapes =
     useWhiteboardStore(
-      (state) => state.setShapes
+      (state) =>
+        state.setShapes
     );
 
   const setShape =
     useWhiteboardStore(
-      (state) => state.setShape
+      (state) =>
+        state.setShape
     );
 
   const deleteShape =
     useWhiteboardStore(
-      (state) => state.deleteShape
+      (state) =>
+        state.deleteShape
     );
 
   useEffect(() => {
@@ -69,17 +56,26 @@ const RoomPage = () => {
     const loadLocalBoard =
       async () => {
         const shapes =
-          await loadBoard(roomId);
+          await loadBoard(
+            roomId
+          );
 
-        setShapes(shapes);
+        setShapes(
+          shapes
+        );
       };
 
     void loadLocalBoard();
-  }, [roomId, setShapes]);
+  }, [
+    roomId,
+    setShapes,
+  ]);
 
   const handleMessage =
     useCallback(
-      (message: ServerMessage) => {
+      (
+        message: ServerMessage
+      ) => {
         if (
           message.type ===
           "ROOM_JOINED"
@@ -132,8 +128,6 @@ const RoomPage = () => {
             message.shapeId,
             message.roomId
           );
-
-          return;
         }
       },
       [
@@ -149,32 +143,48 @@ const RoomPage = () => {
     deleteShape:
       sendDeleteShape,
   } = useWebSocket({
-    roomId: roomId ?? "",
+    roomId:
+      roomId ?? "",
     onMessage:
       handleMessage,
   });
+
+  const handleUpdateShape =
+    useCallback(
+      (shape: Shape) => {
+        updateShape(
+          shape
+        );
+      },
+      [updateShape]
+    );
 
   if (!roomId) {
     return null;
   }
 
   return (
-    <div className="h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-gray-100">
       <Toolbar
         roomId={roomId}
-        onAddShape={addShape}
+        onAddShape={
+          addShape
+        }
         onDeleteShape={
           sendDeleteShape
         }
         onLeaveRoom={() =>
           navigate("/")
         }
+        onUpdateShape={
+          handleUpdateShape
+        }
       />
 
       <Canvas
         roomId={roomId}
         onUpdateShape={
-          updateShape
+          handleUpdateShape
         }
       />
     </div>

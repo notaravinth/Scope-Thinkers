@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { Shape } from "../types/whiteboard";
-import type { ServerMessage } from "../App";
+import type { ServerMessage } from "../types/websocket";
 
 interface UseWebSocketProps {
   roomId: string;
@@ -22,16 +22,19 @@ const useWebSocket = ({
         ? "wss:"
         : "ws:";
 
-    const host = window.location.hostname;
+    const host =
+      window.location.hostname;
 
-    const socketUrl = `${protocol}//${host}:8080`;
+    const socketUrl =
+      `${protocol}//${host}:8080`;
 
     console.log(
       "Connecting to WebSocket:",
       socketUrl
     );
 
-    const socket = new WebSocket(socketUrl);
+    const socket =
+      new WebSocket(socketUrl);
 
     socketRef.current = socket;
 
@@ -48,10 +51,14 @@ const useWebSocket = ({
       );
     };
 
-    socket.onmessage = (event) => {
+    socket.onmessage = (
+      event
+    ) => {
       try {
         const message: ServerMessage =
-          JSON.parse(event.data);
+          JSON.parse(
+            event.data
+          );
 
         onMessage(message);
       } catch (error) {
@@ -62,7 +69,9 @@ const useWebSocket = ({
       }
     };
 
-    socket.onerror = (error) => {
+    socket.onerror = (
+      error
+    ) => {
       console.error(
         "WebSocket error:",
         error
@@ -77,12 +86,17 @@ const useWebSocket = ({
 
     return () => {
       socket.close();
-      socketRef.current = null;
+
+      socketRef.current =
+        null;
     };
   }, [roomId, onMessage]);
 
-  const sendMessage = (message: object) => {
-    const socket = socketRef.current;
+  const sendMessage = (
+    message: object
+  ) => {
+    const socket =
+      socketRef.current;
 
     if (!socket) return;
 
@@ -102,7 +116,9 @@ const useWebSocket = ({
     );
   };
 
-  const addShape = (shape: Shape) => {
+  const addShape = (
+    shape: Shape
+  ) => {
     sendMessage({
       type: "ADD_SHAPE",
       roomId,
@@ -110,7 +126,9 @@ const useWebSocket = ({
     });
   };
 
-  const updateShape = (shape: Shape) => {
+  const updateShape = (
+    shape: Shape
+  ) => {
     sendMessage({
       type: "UPDATE_SHAPE",
       roomId,
