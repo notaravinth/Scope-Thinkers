@@ -8,7 +8,7 @@ import {
   closeWeaviate,
 } from "./src/services/weaviate.js";
 
-const BATCH_SIZE = 5;
+const BATCH_SIZE = 10;
 
 function stableUuid(sourceId) {
   const hex = createHash("sha1")
