@@ -9,7 +9,6 @@ import {
 } from "./src/services/weaviate.js";
 
 const BATCH_SIZE = 5;
-const MAX_RETRIES = 5;
 
 function stableUuid(sourceId) {
   const hex = createHash("sha1")
@@ -34,137 +33,106 @@ function stableUuid(sourceId) {
   ].join("-");
 }
 
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isRateLimitError(error) {
-  const message = String(error?.message || error);
-
-  return (
-    message.includes("429") ||
-    message.includes("RESOURCE_EXHAUSTED") ||
-    message.includes("rate limit")
-  );
-}
-
-async function generateEmbeddingsWithRetry(texts) {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await generateEmbeddings(texts, "RETRIEVAL_DOCUMENT");
-    } catch (error) {
-      if (!isRateLimitError(error) || attempt >= MAX_RETRIES) {
-        throw error;
-      }
-
-      const delay = Math.min(2000 * 2 ** attempt, 60000);
-
-      console.warn(
-        `Gemini rate limit reached. Retrying in ${delay / 1000}s...`
-      );
-
-      await wait(delay);
-    }
-  }
-}
-
 function createEmbeddingText(job) {
   return [
-    `Title: ${job.title}`,
     `Company: ${job.company}`,
     `Description: ${job.description}`,
     `Skills and industry: ${job.skills.join(", ")}`,
     `Location: ${job.location}`,
     `Experience: ${job.experienceLevel}`,
+    `Employment type: ${job.employmentType}`,
   ].join("\n");
+}
+
+function createProperties(job) {
+  return {
+    sourceId: job.sourceId,
+    title: job.title,
+    company: job.company,
+    description: job.description,
+    skills: job.skills,
+    location: job.location,
+    experienceLevel: job.experienceLevel,
+    employmentType: job.employmentType,
+    url: job.url,
+    pubDate: job.pubDate,
+    salary: job.salary,
+  };
 }
 
 async function syncJobs() {
   let inserted = 0;
-  let skipped = 0;
+  let updated = 0;
 
   try {
     const jobs = await fetchRemoteJobs();
     const collection = await ensureJobCollection();
 
-    console.log(`Fetched ${jobs.length} real jobs from Jobicy`);
-
-    const pendingJobs = [];
-
-    // Check existing IDs first, so we don't spend embedding requests
-    // on jobs that have already been saved.
-    for (const job of jobs) {
-      const id = stableUuid(job.sourceId);
-      const exists = await collection.data.exists(id);
-
-      if (exists) {
-        skipped++;
-        continue;
-      }
-
-      pendingJobs.push({ job, id });
-    }
-
-    console.log(`Already stored: ${skipped}`);
-    console.log(`New jobs to process: ${pendingJobs.length}`);
+    console.log(`Fetched ${jobs.length} jobs from Jobicy`);
+    console.log(
+      "Generating new EmbeddingGemma 2 vectors for all fetched jobs..."
+    );
 
     for (
       let start = 0;
-      start < pendingJobs.length;
+      start < jobs.length;
       start += BATCH_SIZE
     ) {
-      const batch = pendingJobs.slice(start, start + BATCH_SIZE);
+      const batch = jobs.slice(start, start + BATCH_SIZE);
 
-      const embeddingTexts = batch.map(({ job }) =>
-        createEmbeddingText(job)
+      const embeddingTexts = batch.map((job) =>
+        [
+          `Title: ${job.title}`,
+          createEmbeddingText(job),
+        ].join("\n")
       );
 
-      // One Gemini request for this batch.
-      const embeddings = await generateEmbeddingsWithRetry(
-        embeddingTexts
+      // Generate fresh vectors with EmbeddingGemma 2.
+      const embeddings = await generateEmbeddings(
+        embeddingTexts,
+        "RETRIEVAL_DOCUMENT"
       );
 
-      // Store the resulting vectors in Weaviate.
       for (let i = 0; i < batch.length; i++) {
-        const { job, id } = batch[i];
+        const job = batch[i];
+        const id = stableUuid(job.sourceId);
+        const properties = createProperties(job);
+        const exists = await collection.data.exists(id);
 
-        const properties = {
-          sourceId: job.sourceId,
-          title: job.title,
-          company: job.company,
-          description: job.description,
-          skills: job.skills,
-          location: job.location,
-          experienceLevel: job.experienceLevel,
-          employmentType: job.employmentType,
-          url: job.url,
-          pubDate: job.pubDate,
-          salary: job.salary,
-        };
+        if (exists) {
+          // Preserve the existing UUID and replace its old vector.
+          await collection.data.update({
+            id,
+            properties,
+            vectors: embeddings[i],
+          });
 
-        await collection.data.insert({
-          id,
-          properties,
-          vectors: embeddings[i],
-        });
+          updated++;
+          console.log(`Updated: ${job.title}`);
+        } else {
+          // Insert jobs that aren't in Weaviate yet.
+          await collection.data.insert({
+            id,
+            properties,
+            vectors: embeddings[i],
+          });
 
-        inserted++;
-        console.log(`Inserted: ${job.title}`);
+          inserted++;
+          console.log(`Inserted: ${job.title}`);
+        }
       }
 
       console.log(
-        `Processed ${Math.min(
-          start + batch.length,
-          pendingJobs.length
-        )}/${pendingJobs.length} new jobs`
+        `Processed ${Math.min(start + batch.length, jobs.length)}/${jobs.length}`
       );
     }
 
-    console.log("\nJobicy sync completed.");
+    console.log("\nEmbeddingGemma 2 migration completed.");
     console.log(`Inserted: ${inserted}`);
-    console.log(`Skipped existing: ${skipped}`);
+    console.log(`Updated: ${updated}`);
+    console.log(`Total processed: ${inserted + updated}`);
   } catch (error) {
-    console.error("Jobicy sync failed:", error.message);
+    console.error("Job sync failed:", error.message);
     process.exitCode = 1;
   } finally {
     await closeWeaviate();
