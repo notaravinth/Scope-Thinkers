@@ -1,20 +1,42 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { signOut } from "firebase/auth";
+import {
+  deleteObject,
+  getBlob,
+  getMetadata,
+  listAll,
+  ref,
+  uploadBytes,
+} from "firebase/storage";
+import { auth, storage } from "./firebase";
+import { useAuth } from "./AuthContext.jsx";
+import AuthScreen from "./AuthScreen.jsx";
 import "./App.css";
 
 const API_URL = "http://localhost:5000";
+
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
 function Icon({ name, size = 18, className = "" }) {
   const common = {
     width: size,
+
     height: size,
+
     viewBox: "0 0 24 24",
+
     fill: "none",
+
     stroke: "currentColor",
+
     strokeWidth: 1.8,
+
     strokeLinecap: "round",
+
     strokeLinejoin: "round",
+
     "aria-hidden": true,
+
     className,
   };
 
@@ -22,55 +44,71 @@ function Icon({ name, size = 18, className = "" }) {
     arrow: (
       <>
         <path d="M5 12h14" />
+
         <path d="m12 5 7 7-7 7" />
       </>
     ),
+
     upload: (
       <>
         <path d="M12 16V4" />
+
         <path d="m7 9 5-5 5 5" />
+
         <path d="M5 15v4a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4" />
       </>
     ),
+
     file: (
       <>
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+
         <path d="M14 2v6h6M8 13h8M8 17h6" />
       </>
     ),
+
     search: (
       <>
         <circle cx="10.8" cy="10.8" r="6.8" />
+
         <path d="m16 16 4 4" />
       </>
     ),
+
     pin: (
       <>
         <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
+
         <circle cx="12" cy="10" r="2.5" />
       </>
     ),
+
     external: (
       <>
         <path d="M14 3h7v7M10 14 21 3M19 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6" />
       </>
     ),
+
     close: (
       <>
         <path d="m18 6-12 12M6 6l12 12" />
       </>
     ),
+
     check: <path d="m5 12 4 4L19 6" />,
+
     filter: <path d="M4 7h16M7 12h10m-7 5h4" />,
-    moon: (
-      <path d="M20.8 13A8.5 8.5 0 0 1 11 3.2 8.5 8.5 0 1 0 20.8 13Z" />
-    ),
+
+    moon: <path d="M20.8 13A8.5 8.5 0 0 1 11 3.2 8.5 8.5 0 1 0 20.8 13Z" />,
+
     sun: (
       <>
         <circle cx="12" cy="12" r="4" />
+
         <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" />
       </>
     ),
+
     spark: (
       <path d="m12 3 1.9 5.8L20 11l-6.1 2.2L12 19l-2-5.8L4 11l6-2.2L12 3Z" />
     ),
@@ -81,11 +119,17 @@ function Icon({ name, size = 18, className = "" }) {
 
 function getInitials(company = "?") {
   return company
+
     .split(/\s+/)
+
     .filter(Boolean)
+
     .slice(0, 2)
+
     .map((word) => word[0])
+
     .join("")
+
     .toUpperCase();
 }
 
@@ -100,6 +144,7 @@ function formatDate(value) {
 
   return new Intl.DateTimeFormat("en", {
     month: "short",
+
     day: "numeric",
   }).format(date);
 }
@@ -110,16 +155,38 @@ const inputClass =
 const mutedClass = "text-[#737d70] dark:text-[#a8b3a5]";
 
 export default function App() {
+  const { user, loading: authLoading } = useAuth();
+
   const [resumeText, setResumeText] = useState("");
+
   const [selectedFile, setSelectedFile] = useState(null);
+
   const [matches, setMatches] = useState([]);
+
   const [loading, setLoading] = useState(false);
+
   const [error, setError] = useState("");
+
   const [uploadInfo, setUploadInfo] = useState(null);
+
+  const [savedDocuments, setSavedDocuments] = useState([]);
+
+  const [documentsOwnerUid, setDocumentsOwnerUid] = useState(null);
+
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+
+  const [savingDocument, setSavingDocument] = useState(false);
+
+  const [documentMessage, setDocumentMessage] = useState("");
+
   const [searchTerm, setSearchTerm] = useState("");
+
   const [sortBy, setSortBy] = useState("match");
+
   const [workType, setWorkType] = useState("all");
+
   const [showResumePanel, setShowResumePanel] = useState(true);
+
   const [dragging, setDragging] = useState(false);
 
   const [darkMode, setDarkMode] = useState(() => {
@@ -133,9 +200,158 @@ export default function App() {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
+    if (!user?.uid) return;
+
+    let cancelled = false;
+
+    async function loadSavedDocuments() {
+      setDocumentsLoading(true);
+      setDocumentMessage("");
+
+      try {
+        const documentsRef = ref(storage, `users/${user.uid}/resumes`);
+        const result = await listAll(documentsRef);
+        const documents = await Promise.all(
+          result.items.map(async (itemRef) => {
+            const metadata = await getMetadata(itemRef);
+            return {
+              name: metadata.customMetadata?.originalName || metadata.name,
+              fullPath: itemRef.fullPath,
+              size: metadata.size,
+              contentType: metadata.contentType || "application/octet-stream",
+              updatedAt: metadata.updated,
+              storageRef: itemRef,
+            };
+          }),
+        );
+
+        documents.sort(
+          (a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0),
+        );
+
+        if (!cancelled) {
+          setSavedDocuments(documents);
+          setDocumentsOwnerUid(user.uid);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setDocumentMessage(
+            err.code === "storage/unauthorized"
+              ? "Firebase Storage access was denied. Check your Storage rules."
+              : "Could not load your saved resumes. Check Firebase Storage setup.",
+          );
+        }
+      } finally {
+        if (!cancelled) setDocumentsLoading(false);
+      }
+    }
+
+    loadSavedDocuments();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid]);
+
+  async function saveSelectedDocument() {
+    if (!user?.uid || !selectedFile) {
+      setError("Choose a resume file before saving.");
+      return;
+    }
+
+    setSavingDocument(true);
+    setError("");
+    setDocumentMessage("");
+
+    try {
+      const safeName = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const storagePath = `users/${user.uid}/resumes/${Date.now()}-${safeName}`;
+      const documentRef = ref(storage, storagePath);
+
+      await uploadBytes(documentRef, selectedFile, {
+        contentType: selectedFile.type || "application/octet-stream",
+        customMetadata: {
+          originalName: selectedFile.name,
+        },
+      });
+
+      const metadata = await getMetadata(documentRef);
+      setDocumentsOwnerUid(user.uid);
+      setSavedDocuments((current) => [
+        {
+          name: metadata.customMetadata?.originalName || selectedFile.name,
+          fullPath: documentRef.fullPath,
+          size: metadata.size,
+          contentType: metadata.contentType || selectedFile.type,
+          updatedAt: metadata.updated,
+          storageRef: documentRef,
+        },
+        ...current,
+      ]);
+      setDocumentMessage(`Saved “${selectedFile.name}” to your private documents.`);
+    } catch (err) {
+      setError(
+        err.code === "storage/unauthorized"
+          ? "Firebase Storage denied the upload. Check your Storage rules."
+          : "Could not save the resume to Firebase Storage. Check your Storage setup and try again.",
+      );
+    } finally {
+      setSavingDocument(false);
+    }
+  }
+
+  async function viewSavedDocument(document) {
+    // Open a tab immediately so browsers do not block it while the secure download runs.
+    const previewWindow = window.open("", "_blank");
+    if (previewWindow) {
+      previewWindow.document.title = document.name;
+      previewWindow.document.body.textContent = "Loading document…";
+    }
+
+    try {
+      const blob = await getBlob(document.storageRef);
+      const objectUrl = URL.createObjectURL(blob);
+
+      if (previewWindow) {
+        previewWindow.location.href = objectUrl;
+      } else {
+        const link = window.document.createElement("a");
+        link.href = objectUrl;
+        link.download = document.name;
+        link.click();
+      }
+
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (err) {
+      if (previewWindow) previewWindow.close();
+      setDocumentMessage(
+        err.code === "storage/unauthorized"
+          ? "You do not have permission to open this document."
+          : "Could not open this document. Please try again.",
+      );
+    }
+  }
+
+  async function deleteSavedDocument(document) {
+    const confirmed = window.confirm(`Delete “${document.name}” from your saved documents?`);
+    if (!confirmed) return;
+
+    try {
+      await deleteObject(document.storageRef);
+      setSavedDocuments((current) =>
+        current.filter((item) => item.fullPath !== document.fullPath),
+      );
+      setDocumentMessage(`Deleted “${document.name}”.`);
+    } catch {
+      setDocumentMessage("Could not delete this document. Please try again.");
+    }
+  }
+
+  useEffect(() => {
     try {
       localStorage.setItem(
         "matchwise-theme",
+
         darkMode ? "dark" : "light",
       );
     } catch {
@@ -145,7 +361,9 @@ export default function App() {
 
   function chooseFile(file) {
     setError("");
+
     setMatches([]);
+
     setUploadInfo(null);
 
     if (!file) return;
@@ -154,29 +372,34 @@ export default function App() {
 
     if (!["pdf", "docx"].includes(extension)) {
       setError("Choose a PDF or DOCX file to continue.");
+
       return;
     }
 
     if (file.size > MAX_FILE_SIZE) {
       setError("This file is over 5 MB. Please choose a smaller resume.");
+
       return;
     }
 
     setSelectedFile(file);
+
     setResumeText("");
   }
 
   async function findMatches() {
     if (!selectedFile && resumeText.trim().length < 30) {
-      setError(
-        "Upload a resume or paste at least 30 characters of text.",
-      );
+      setError("Upload a resume or paste at least 30 characters of text.");
+
       return;
     }
 
     setLoading(true);
+
     setError("");
+
     setMatches([]);
+
     setUploadInfo(null);
 
     try {
@@ -184,21 +407,26 @@ export default function App() {
 
       if (selectedFile) {
         const formData = new FormData();
+
         formData.append("resume", selectedFile);
 
         response = await fetch(
           `${API_URL}/api/resumes/upload-match`,
+
           {
             method: "POST",
+
             body: formData,
           },
         );
       } else {
         response = await fetch(`${API_URL}/api/resumes/match`, {
           method: "POST",
+
           headers: {
             "Content-Type": "application/json",
           },
+
           body: JSON.stringify({ resumeText }),
         });
       }
@@ -214,6 +442,7 @@ export default function App() {
       if (selectedFile) {
         setUploadInfo({
           fileName: data.fileName || selectedFile.name,
+
           characters: data.extractedCharacters || 0,
         });
       }
@@ -231,8 +460,11 @@ export default function App() {
 
   function removeFile() {
     setSelectedFile(null);
+
     setUploadInfo(null);
+
     setMatches([]);
+
     setError("");
 
     if (fileInputRef.current) {
@@ -240,19 +472,28 @@ export default function App() {
     }
   }
 
+  const visibleSavedDocuments = documentsOwnerUid === user?.uid ? savedDocuments : [];
+
   const filteredMatches = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
 
     const filtered = matches.filter((job) => {
       const searchable = [
         job.title,
+
         job.company,
+
         job.description,
+
         job.location,
+
         ...(job.skills || []),
       ]
+
         .filter(Boolean)
+
         .join(" ")
+
         .toLowerCase();
 
       const type = (job.employmentType || "").toLowerCase();
@@ -265,9 +506,7 @@ export default function App() {
 
     return filtered.sort((a, b) => {
       if (sortBy === "newest") {
-        return (
-          new Date(b.pubDate || 0) - new Date(a.pubDate || 0)
-        );
+        return new Date(b.pubDate || 0) - new Date(a.pubDate || 0);
       }
 
       if (sortBy === "company") {
@@ -277,6 +516,18 @@ export default function App() {
       return (b.similarity ?? -1) - (a.similarity ?? -1);
     });
   }, [matches, searchTerm, sortBy, workType]);
+
+  if (authLoading) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-[#f7f7f0] text-[#25372b] dark:bg-[#141a15] dark:text-[#edf2e8]">
+        <p className="text-sm font-semibold">Loading Matchwise...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthScreen />;
+  }
 
   return (
     <main
@@ -313,9 +564,33 @@ export default function App() {
               className="inline-flex h-10 items-center gap-2 rounded-full border border-[#dce2d4] px-3 text-xs font-bold transition hover:bg-[#edf0e6] dark:border-[#435043] dark:hover:bg-[#263329]"
             >
               <Icon name={darkMode ? "sun" : "moon"} size={16} />
+
               <span className="hidden sm:inline">
                 {darkMode ? "Light mode" : "Dark mode"}
               </span>
+            </button>
+
+            <span
+              className="hidden max-w-40 truncate text-xs font-semibold sm:block"
+              title={user.email || "Signed in"}
+            >
+              {user.email || "Signed in"}
+            </span>
+
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await signOut(auth);
+
+                  setError("");
+                } catch {
+                  setError("Unable to sign out. Please try again.");
+                }
+              }}
+              className="rounded-full border border-[#dce2d4] px-3 py-2.5 text-xs font-bold transition hover:bg-[#edf0e6] dark:border-[#435043] dark:hover:bg-[#263329]"
+            >
+              Sign out
             </button>
 
             <a
@@ -348,8 +623,8 @@ export default function App() {
           </h1>
 
           <p className="mt-6 max-w-xl text-sm leading-7 text-[#737d70] sm:text-base dark:text-[#a8b3a5]">
-            Less scrolling. Better-fit opportunities. Bring your experience
-            and we’ll find the roles worth your attention.
+            Less scrolling. Better-fit opportunities. Bring your experience and
+            we’ll find the roles worth your attention.
           </p>
 
           <div className="mt-7 flex items-center gap-3 text-xs font-semibold text-[#586a55] dark:text-[#c1cdbb]">
@@ -357,33 +632,40 @@ export default function App() {
               <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-[#f7f7f0] bg-[#dfe8d2] text-[10px] text-[#38543a] dark:border-[#141a15]">
                 A
               </span>
+
               <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-[#f7f7f0] bg-[#e9d8c6] text-[10px] text-[#76543a] dark:border-[#141a15]">
                 J
               </span>
+
               <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-[#f7f7f0] bg-[#d8e5df] text-[10px] text-[#385b4b] dark:border-[#141a15]">
                 M
               </span>
             </div>
-
             Thoughtful matches, not keyword bingo.
           </div>
         </div>
 
         <div className="relative mx-auto hidden h-[310px] w-full max-w-[470px] items-center justify-center md:flex">
           <div className="absolute h-[280px] w-[280px] rounded-full border border-[#d9dfce] dark:border-[#39483a]" />
+
           <div className="absolute h-[215px] w-[215px] rounded-full border border-dashed border-[#c7d1b9] dark:border-[#465543]" />
+
           <div className="absolute right-12 top-7 h-4 w-4 rounded-full bg-[#d9f36a] shadow-[0_0_0_8px_rgba(217,243,106,.18)]" />
 
           <div className="absolute left-6 top-14 h-24 w-28 -rotate-12 rounded-2xl border border-[#dce2d4] bg-[#e8ecdf] p-4 shadow-sm dark:border-[#435043] dark:bg-[#263329]">
             <span className="mb-4 block h-2 w-2 rounded-full bg-[#8eb66e]" />
+
             <span className="mb-2 block h-1.5 w-14 rounded bg-[#b7c4a9]" />
+
             <span className="mb-2 block h-1.5 w-10 rounded bg-[#c9d2bf]" />
+
             <span className="block h-1.5 w-12 rounded bg-[#c9d2bf]" />
           </div>
 
           <div className="relative z-10 w-64 -rotate-3 rounded-2xl border border-[#e0e4d8] bg-white p-5 shadow-[0_24px_70px_rgba(42,62,40,.13)] dark:border-[#3b493c] dark:bg-[#202a21]">
             <div className="flex items-center justify-between text-[9px] font-extrabold tracking-[.18em] text-[#718269]">
               <span>YOUR NEXT ROLE</span>
+
               <span className="text-lg text-[#8eb66e]">✳</span>
             </div>
 
@@ -397,6 +679,7 @@ export default function App() {
 
             <div className="mt-8 flex items-center justify-between border-t border-[#e5e9df] pt-3 text-[9px] font-bold tracking-widest text-[#778271] dark:border-[#3a493d]">
               <span>01 — 50</span>
+
               <span className="text-lg">↗</span>
             </div>
           </div>
@@ -421,6 +704,7 @@ export default function App() {
               <p className="mb-2 text-[10px] font-extrabold tracking-[.23em] text-[#668552] dark:text-[#b5d39a]">
                 THE SHORTLIST
               </p>
+
               <h2 className="text-3xl font-semibold tracking-[-.05em] sm:text-4xl">
                 Find your kind of work.
               </h2>
@@ -428,6 +712,7 @@ export default function App() {
 
             <div className="flex items-center gap-2 text-xs font-semibold text-[#737d70] dark:text-[#a8b3a5]">
               <span className="h-2 w-2 rounded-full bg-[#8db66c]" />
+
               {matches.length
                 ? `${matches.length} roles matched`
                 : "Up to 50 real listings"}
@@ -445,6 +730,7 @@ export default function App() {
                   <h3 className="text-lg font-bold tracking-tight">
                     Start with your experience
                   </h3>
+
                   <p className={`mt-1 text-sm ${mutedClass}`}>
                     One resume. A clearer direction.
                   </p>
@@ -467,12 +753,15 @@ export default function App() {
                     onClick={() => fileInputRef.current?.click()}
                     onDragOver={(event) => {
                       event.preventDefault();
+
                       setDragging(true);
                     }}
                     onDragLeave={() => setDragging(false)}
                     onDrop={(event) => {
                       event.preventDefault();
+
                       setDragging(false);
+
                       chooseFile(event.dataTransfer.files?.[0]);
                     }}
                     className={`flex min-h-48 w-full flex-col items-center justify-center rounded-2xl border border-dashed px-4 py-6 text-center transition ${
@@ -486,13 +775,14 @@ export default function App() {
                       type="file"
                       className="hidden"
                       accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                      onChange={(event) =>
-                        chooseFile(event.target.files?.[0])
-                      }
+                      onChange={(event) => chooseFile(event.target.files?.[0])}
                     />
 
                     <span className="mb-3 grid h-11 w-11 place-items-center rounded-xl bg-[#e5ecd9] text-[#31543a] dark:bg-[#354a34] dark:text-[#d9f36a]">
-                      <Icon name={selectedFile ? "check" : "upload"} size={21} />
+                      <Icon
+                        name={selectedFile ? "check" : "upload"}
+                        size={21}
+                      />
                     </span>
 
                     <strong className="max-w-full break-words text-sm">
@@ -509,6 +799,7 @@ export default function App() {
 
                     <span className="mt-4 inline-flex items-center gap-2 text-xs font-bold text-[#476b3e] dark:text-[#c2dfa5]">
                       {selectedFile ? "Choose another file" : "Browse files"}
+
                       <Icon name="arrow" size={14} />
                     </span>
                   </button>
@@ -529,7 +820,10 @@ export default function App() {
                 </div>
 
                 <div className="flex min-w-0 flex-col">
-                  <label htmlFor="resume-text" className="mb-2 text-xs font-bold">
+                  <label
+                    htmlFor="resume-text"
+                    className="mb-2 text-xs font-bold"
+                  >
                     Paste your resume
                   </label>
 
@@ -539,6 +833,7 @@ export default function App() {
                     disabled={Boolean(selectedFile) || loading}
                     onChange={(event) => {
                       setResumeText(event.target.value);
+
                       setError("");
                     }}
                     placeholder="Experience, skills, projects, the things you’ve built…"
@@ -546,7 +841,9 @@ export default function App() {
                     className={`${inputClass} min-h-36 flex-1 resize-y leading-6 disabled:cursor-not-allowed disabled:opacity-50`}
                   />
 
-                  <div className={`mt-2 flex items-center justify-between text-[11px] ${mutedClass}`}>
+                  <div
+                    className={`mt-2 flex items-center justify-between text-[11px] ${mutedClass}`}
+                  >
                     <span>{resumeText.length.toLocaleString()} characters</span>
 
                     {selectedFile && (
@@ -555,6 +852,7 @@ export default function App() {
                         className="font-bold text-[#476b3e] dark:text-[#c2dfa5]"
                         onClick={() => {
                           removeFile();
+
                           setResumeText("");
                         }}
                       >
@@ -564,6 +862,75 @@ export default function App() {
                   </div>
                 </div>
               </div>
+
+              <section className="mt-6 border-t border-[#e2e6db] pt-5 dark:border-[#354337]">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-bold">Your saved documents</h4>
+                    <p className={`mt-1 text-xs ${mutedClass}`}>
+                      Private to your account. Only you can access these files.
+                    </p>
+                  </div>
+                  {selectedFile && (
+                    <button
+                      type="button"
+                      onClick={saveSelectedDocument}
+                      disabled={savingDocument}
+                      className="rounded-full border border-[#bdcbb2] px-4 py-2 text-xs font-bold text-[#476b3e] transition hover:bg-[#eaf0df] disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#586b4d] dark:text-[#c2dfa5] dark:hover:bg-[#2c392b]"
+                    >
+                      {savingDocument ? "Saving…" : "Save selected resume"}
+                    </button>
+                  )}
+                </div>
+
+                {documentMessage && (
+                  <p role="status" className="mt-3 rounded-xl border border-[#dce2d4] bg-white px-3 py-2 text-xs text-[#476b3e] dark:border-[#354337] dark:bg-[#1d261f] dark:text-[#c2dfa5]">
+                    {documentMessage}
+                  </p>
+                )}
+
+                {documentsLoading ? (
+                  <p className={`mt-4 text-xs ${mutedClass}`}>Loading your documents…</p>
+                ) : visibleSavedDocuments.length === 0 ? (
+                  <p className={`mt-4 text-xs ${mutedClass}`}>
+                    No saved resumes yet. Choose a PDF or DOCX file, then select “Save selected resume”.
+                  </p>
+                ) : (
+                  <ul className="mt-4 divide-y divide-[#e2e6db] dark:divide-[#354337]">
+                    {visibleSavedDocuments.map((document) => (
+                      <li key={document.fullPath} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#e5ecd9] text-[#31543a] dark:bg-[#354a34] dark:text-[#d9f36a]">
+                            <Icon name="file" size={17} />
+                          </span>
+                          <div className="min-w-0">
+                            <p className="break-all text-xs font-semibold">{document.name}</p>
+                            <p className={`mt-1 text-[10px] ${mutedClass}`}>
+                              {(document.size / 1024).toFixed(1)} KB · {formatDate(document.updatedAt)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => viewSavedDocument(document)}
+                            className="text-xs font-bold text-[#476b3e] hover:underline dark:text-[#c2dfa5]"
+                          >
+                            View
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteSavedDocument(document)}
+                            className="text-xs font-semibold text-[#8a5144] hover:underline dark:text-[#f0a899]"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
 
               {error && (
                 <p
@@ -577,7 +944,7 @@ export default function App() {
               <div className="mt-6 flex flex-col-reverse items-start justify-between gap-4 border-t border-[#e2e6db] pt-5 sm:flex-row sm:items-center dark:border-[#354337]">
                 <p className={`flex items-center gap-2 text-xs ${mutedClass}`}>
                   <Icon name="file" size={15} />
-                  Your file is processed in memory, not saved as a document.
+                  Save a copy to your private Firebase documents.
                 </p>
 
                 <button
@@ -615,6 +982,7 @@ export default function App() {
                         ? "Resume text added"
                         : uploadInfo?.fileName || "Resume analyzed")}
                   </strong>
+
                   <span className={`mt-1 block text-xs ${mutedClass}`}>
                     Your experience has been used to find relevant roles.
                   </span>
@@ -634,6 +1002,7 @@ export default function App() {
           {uploadInfo && (
             <div className="mt-4 flex items-start gap-2 rounded-xl border border-[#b9d0a9] bg-[#eaf2e4] px-4 py-3 text-sm text-[#31543a] dark:border-[#3e5940] dark:bg-[#263728] dark:text-[#cce2bc]">
               <Icon name="check" size={17} />
+
               <span>
                 <strong>Resume processed.</strong>{" "}
                 {uploadInfo.characters.toLocaleString()} characters extracted
@@ -663,7 +1032,12 @@ export default function App() {
 
             <div className="grid gap-2 sm:grid-cols-[minmax(190px,1fr)_150px_150px] lg:w-[570px]">
               <label className="flex items-center gap-2 rounded-xl border border-[#dce2d4] bg-white px-3 dark:border-[#3a493d] dark:bg-[#1d261f]">
-                <Icon name="search" size={16} className="shrink-0 text-[#7d8977]" />
+                <Icon
+                  name="search"
+                  size={16}
+                  className="shrink-0 text-[#7d8977]"
+                />
+
                 <input
                   aria-label="Search results"
                   value={searchTerm}
@@ -674,7 +1048,12 @@ export default function App() {
               </label>
 
               <label className="flex items-center gap-2 rounded-xl border border-[#dce2d4] bg-white px-3 dark:border-[#3a493d] dark:bg-[#1d261f]">
-                <Icon name="filter" size={15} className="shrink-0 text-[#7d8977]" />
+                <Icon
+                  name="filter"
+                  size={15}
+                  className="shrink-0 text-[#7d8977]"
+                />
+
                 <select
                   aria-label="Filter employment type"
                   value={workType}
@@ -682,9 +1061,13 @@ export default function App() {
                   className="min-w-0 w-full bg-transparent py-2 text-xs outline-none dark:bg-[#1d261f]"
                 >
                   <option value="all">All types</option>
+
                   <option value="full-time">Full-time</option>
+
                   <option value="part-time">Part-time</option>
+
                   <option value="contract">Contract</option>
+
                   <option value="internship">Internship</option>
                 </select>
               </label>
@@ -693,6 +1076,7 @@ export default function App() {
                 <span className="text-[10px] font-bold text-[#7d8977]">
                   SORT
                 </span>
+
                 <select
                   aria-label="Sort results"
                   value={sortBy}
@@ -700,7 +1084,9 @@ export default function App() {
                   className="min-w-0 w-full bg-transparent py-2 text-xs outline-none dark:bg-[#1d261f]"
                 >
                   <option value="match">Best match</option>
+
                   <option value="newest">Newest</option>
+
                   <option value="company">Company A–Z</option>
                 </select>
               </label>
@@ -710,8 +1096,10 @@ export default function App() {
           {loading && (
             <div className="flex items-center justify-center gap-4 rounded-2xl border border-[#dce2d4] bg-[#fbfcf7] p-10 dark:border-[#354337] dark:bg-[#202a21]">
               <span className="h-7 w-7 animate-spin rounded-full border-2 border-[#dce5cf] border-t-[#476b3e] dark:border-[#435043] dark:border-t-[#d9f36a]" />
+
               <div>
                 <strong className="text-sm">Reading between the lines.</strong>
+
                 <p className={`mt-1 text-xs ${mutedClass}`}>
                   Comparing your experience with the roles in our shortlist.
                 </p>
@@ -729,6 +1117,7 @@ export default function App() {
                 <h4 className="font-bold">
                   Your next opportunity is in here somewhere.
                 </h4>
+
                 <p className={`mt-2 max-w-xl text-sm leading-6 ${mutedClass}`}>
                   Upload a resume above and we’ll compare it with the current
                   Jobicy listings. Your best-fit roles will show up here.
@@ -739,8 +1128,11 @@ export default function App() {
                 type="button"
                 onClick={() => {
                   setShowResumePanel(true);
+
                   document
+
                     .getElementById("opportunities")
+
                     ?.scrollIntoView({ behavior: "smooth" });
                 }}
                 className="inline-flex items-center justify-center gap-2 rounded-full border border-[#bdcbb2] px-4 py-2.5 text-xs font-bold text-[#476b3e] transition hover:bg-[#eaf0df] dark:border-[#586b4d] dark:text-[#c2dfa5] dark:hover:bg-[#2c392b]"
@@ -752,17 +1144,25 @@ export default function App() {
 
           {!loading && matches.length > 0 && filteredMatches.length === 0 && (
             <div className="mt-5 rounded-2xl border border-[#dce2d4] bg-[#fbfcf7] p-10 text-center dark:border-[#354337] dark:bg-[#202a21]">
-              <Icon name="search" size={25} className="mx-auto text-[#789d5d]" />
+              <Icon
+                name="search"
+                size={25}
+                className="mx-auto text-[#789d5d]"
+              />
+
               <h4 className="mt-3 font-bold">
                 No roles found for that search.
               </h4>
+
               <p className={`mt-2 text-sm ${mutedClass}`}>
                 Try another keyword or clear the employment-type filter.
               </p>
+
               <button
                 className="mt-3 text-sm font-bold text-[#476b3e] dark:text-[#c2dfa5]"
                 onClick={() => {
                   setSearchTerm("");
+
                   setWorkType("all");
                 }}
               >
@@ -782,9 +1182,13 @@ export default function App() {
                     className={`grid h-12 w-12 place-items-center rounded-2xl text-xs font-black tracking-wide ${
                       [
                         "bg-[#e4ebd9] text-[#35543a]",
+
                         "bg-[#f0e2d4] text-[#80593a]",
+
                         "bg-[#dce9e3] text-[#3d6754]",
+
                         "bg-[#e6dff0] text-[#644b7e]",
+
                         "bg-[#eee8cf] text-[#75632d]",
                       ][index % 5]
                     } dark:bg-[#303e30] dark:text-[#d3e4c7]`}
@@ -797,6 +1201,7 @@ export default function App() {
                       <span className="text-xs font-bold text-[#527246] dark:text-[#c2dfa5]">
                         {job.company || "Company not specified"}
                       </span>
+
                       <span className={`text-[10px] ${mutedClass}`}>
                         {formatDate(job.pubDate)}
                       </span>
@@ -806,19 +1211,31 @@ export default function App() {
                       {job.title || "Untitled role"}
                     </h4>
 
-                    <div className={`mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] ${mutedClass}`}>
+                    <div
+                      className={`mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] ${mutedClass}`}
+                    >
                       <span className="inline-flex items-center gap-1">
                         <Icon name="pin" size={13} />
+
                         {job.location || "Location not specified"}
                       </span>
+
                       {job.employmentType && <span>{job.employmentType}</span>}
-                      {job.experienceLevel && <span>{job.experienceLevel}</span>}
+
+                      {job.experienceLevel && (
+                        <span>{job.experienceLevel}</span>
+                      )}
                     </div>
 
-                    <p className={`mt-3 max-w-4xl text-xs leading-6 ${mutedClass}`}>
+                    <p
+                      className={`mt-3 max-w-4xl text-xs leading-6 ${mutedClass}`}
+                    >
                       {(job.description || "No description provided.")
+
                         .replace(/\s+/g, " ")
+
                         .slice(0, 230)}
+
                       {(job.description || "").length > 230 ? "…" : ""}
                     </p>
 
@@ -843,12 +1260,15 @@ export default function App() {
                           ? "—"
                           : `${job.similarity.toFixed(0)}%`}
                       </p>
+
                       <p className={`mt-0.5 text-[9px] ${mutedClass}`}>
                         VECTOR SIMILARITY*
                       </p>
 
                       {job.salary && job.salary !== "Not disclosed" && (
-                        <p className={`mt-2 max-w-36 text-right text-[10px] ${mutedClass}`}>
+                        <p
+                          className={`mt-2 max-w-36 text-right text-[10px] ${mutedClass}`}
+                        >
                           {job.salary}
                         </p>
                       )}
