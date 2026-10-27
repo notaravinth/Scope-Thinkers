@@ -1,5 +1,4 @@
-const OLLAMA_URL =
-  process.env.OLLAMA_URL || "http://localhost:11434";
+const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 
 const MODEL = "embeddinggemma-2:270m";
 const DIMENSIONS = 768;
@@ -12,31 +11,24 @@ function prepareInput(text, taskType) {
   return `title: none | text: ${text.trim()}`;
 }
 
-export async function generateEmbedding(
-  text,
-  taskType = "RETRIEVAL_QUERY"
-) {
+export async function generateEmbedding(text, taskType = "RETRIEVAL_QUERY") {
   const embeddings = await generateEmbeddings([text], taskType);
   return embeddings[0];
 }
 
 export async function generateEmbeddings(
   texts,
-  taskType = "RETRIEVAL_DOCUMENT"
+  taskType = "RETRIEVAL_DOCUMENT",
 ) {
   if (
     !Array.isArray(texts) ||
     texts.length === 0 ||
-    texts.some(
-      (text) => typeof text !== "string" || !text.trim()
-    )
+    texts.some((text) => typeof text !== "string" || !text.trim())
   ) {
     throw new Error("Valid text inputs are required");
   }
 
-  const input = texts.map((text) =>
-    prepareInput(text, taskType)
-  );
+  const input = texts.map((text) => prepareInput(text, taskType));
 
   let response;
 
@@ -54,7 +46,7 @@ export async function generateEmbeddings(
   } catch (error) {
     throw new Error(
       `Could not connect to Ollama at ${OLLAMA_URL}. ` +
-        `Make sure Ollama is running. Details: ${error.message}`
+        `Make sure Ollama is running. Details: ${error.message}`,
     );
   }
 
@@ -62,7 +54,7 @@ export async function generateEmbeddings(
     const details = await response.text();
 
     throw new Error(
-      `Ollama embedding request failed (${response.status}): ${details}`
+      `Ollama embedding request failed (${response.status}): ${details}`,
     );
   }
 
@@ -76,13 +68,11 @@ export async function generateEmbeddings(
       (embedding) =>
         !Array.isArray(embedding) ||
         embedding.length !== DIMENSIONS ||
-        embedding.some(
-          (value) => !Number.isFinite(value)
-        )
+        embedding.some((value) => !Number.isFinite(value)),
     )
   ) {
     throw new Error(
-      `Ollama returned invalid embeddings. Expected ${texts.length} vectors of ${DIMENSIONS} dimensions.`
+      `Ollama returned invalid embeddings. Expected ${texts.length} vectors of ${DIMENSIONS} dimensions.`,
     );
   }
 

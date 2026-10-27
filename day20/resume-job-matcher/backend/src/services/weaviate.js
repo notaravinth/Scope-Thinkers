@@ -57,7 +57,7 @@ export async function ensureJobCollection() {
   // Add only properties that are missing from the existing schema.
   const config = await collection.config.get();
   const existingProperties = new Set(
-    (config.properties || []).map((property) => property.name)
+    (config.properties || []).map((property) => property.name),
   );
 
   const additionalProperties = [
@@ -84,3 +84,4 @@ export async function closeWeaviate() {
     client = undefined;
   }
 }
+  

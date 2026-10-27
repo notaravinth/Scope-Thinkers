@@ -1,4 +1,3 @@
-
 const API_URL = "https://jobicy.com/api/v2/remote-jobs";
 
 function stripHtml(html = "") {
@@ -17,9 +16,7 @@ function stripHtml(html = "") {
 }
 
 export function normalizeJob(job) {
-  const description = stripHtml(
-    job.jobDescription || job.jobExcerpt || ""
-  );
+  const description = stripHtml(job.jobDescription || job.jobExcerpt || "");
 
   return {
     sourceId: String(job.id),

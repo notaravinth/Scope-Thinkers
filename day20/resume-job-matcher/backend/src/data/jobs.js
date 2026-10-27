@@ -1,4 +1,3 @@
-
 export const sampleJobs = [
   {
     id: "job-001",

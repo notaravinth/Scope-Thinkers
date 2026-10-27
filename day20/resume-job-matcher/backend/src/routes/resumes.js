@@ -1,4 +1,3 @@
-
 import { Router } from "express";
 import multer from "multer";
 import mammoth from "mammoth";
@@ -24,9 +23,7 @@ const upload = multer({
       .toLowerCase();
 
     if (allowedTypes[extension] !== file.mimetype) {
-      return callback(
-        new Error("Please upload a valid PDF or DOCX resume.")
-      );
+      return callback(new Error("Please upload a valid PDF or DOCX resume."));
     }
 
     callback(null, true);
@@ -138,7 +135,7 @@ router.post(
         error: "Unable to process this resume. Please try another file.",
       });
     }
-  }
+  },
 );
 
 export default router;

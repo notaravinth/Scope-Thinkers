@@ -13,27 +13,18 @@ export async function matchResume(resumeText, limit = 50) {
   }
 
   // Return between 1 and 50 jobs.
-  const resultLimit = Math.min(
-    Math.max(Number(limit) || 50, 1),
-    50,
-  );
+  const resultLimit = Math.min(Math.max(Number(limit) || 50, 1), 50);
 
   const collection = await ensureJobCollection();
 
   // Generate an embedding for the resume using Gemini.
-  const resumeVector = await generateEmbedding(
-    resumeText,
-    "RETRIEVAL_QUERY",
-  );
+  const resumeVector = await generateEmbedding(resumeText, "RETRIEVAL_QUERY");
 
   // Search Weaviate for semantically similar jobs.
-  const result = await collection.query.nearVector(
-    resumeVector,
-    {
-      limit: resultLimit,
-      returnMetadata: ["distance"],
-    },
-  );
+  const result = await collection.query.nearVector(resumeVector, {
+    limit: resultLimit,
+    returnMetadata: ["distance"],
+  });
 
   return result.objects.map((object) => {
     const distance = object.metadata?.distance;
@@ -54,10 +45,7 @@ export async function matchResume(resumeText, limit = 50) {
       distance,
       similarity:
         typeof distance === "number"
-          ? Math.max(
-              0,
-              Math.min(100, (1 - distance) * 100),
-            )
+          ? Math.max(0, Math.min(100, (1 - distance) * 100))
           : null,
     };
   });

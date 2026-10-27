@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { signOut } from "firebase/auth";
 import {
-  deleteObject,
-  getBlob,
-  getMetadata,
-  listAll,
-  ref,
-  uploadBytes,
-} from "firebase/storage";
-import { auth, storage } from "./firebase";
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore";
+import { auth, db } from "./firebase";
 import { useAuth } from "./AuthContext.jsx";
 import AuthScreen from "./AuthScreen.jsx";
 import "./App.css";
@@ -163,21 +163,17 @@ export default function App() {
 
   const [matches, setMatches] = useState([]);
 
+  const [favourites, setFavourites] = useState([]);
+
+  const [favouritesLoading, setFavouritesLoading] = useState(true);
+
+  const [showFavouritesOnly, setShowFavouritesOnly] = useState(false);
+
   const [loading, setLoading] = useState(false);
 
   const [error, setError] = useState("");
 
   const [uploadInfo, setUploadInfo] = useState(null);
-
-  const [savedDocuments, setSavedDocuments] = useState([]);
-
-  const [documentsOwnerUid, setDocumentsOwnerUid] = useState(null);
-
-  const [documentsLoading, setDocumentsLoading] = useState(false);
-
-  const [savingDocument, setSavingDocument] = useState(false);
-
-  const [documentMessage, setDocumentMessage] = useState("");
 
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -199,151 +195,103 @@ export default function App() {
 
   const fileInputRef = useRef(null);
 
-  useEffect(() => {
-    if (!user?.uid) return;
+  function getJobKey(job) {
+    return String(
+      job.sourceId ||
+        job.id ||
+        job.url ||
+        `${job.company || "company"}-${job.title || "role"}-${job.location || "location"}`,
+    );
+  }
 
-    let cancelled = false;
+  function getJobDocumentId(job) {
+    const key = getJobKey(job);
+    let hash = 2166136261;
 
-    async function loadSavedDocuments() {
-      setDocumentsLoading(true);
-      setDocumentMessage("");
-
-      try {
-        const documentsRef = ref(storage, `users/${user.uid}/resumes`);
-        const result = await listAll(documentsRef);
-        const documents = await Promise.all(
-          result.items.map(async (itemRef) => {
-            const metadata = await getMetadata(itemRef);
-            return {
-              name: metadata.customMetadata?.originalName || metadata.name,
-              fullPath: itemRef.fullPath,
-              size: metadata.size,
-              contentType: metadata.contentType || "application/octet-stream",
-              updatedAt: metadata.updated,
-              storageRef: itemRef,
-            };
-          }),
-        );
-
-        documents.sort(
-          (a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0),
-        );
-
-        if (!cancelled) {
-          setSavedDocuments(documents);
-          setDocumentsOwnerUid(user.uid);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setDocumentMessage(
-            err.code === "storage/unauthorized"
-              ? "Firebase Storage access was denied. Check your Storage rules."
-              : "Could not load your saved resumes. Check Firebase Storage setup.",
-          );
-        }
-      } finally {
-        if (!cancelled) setDocumentsLoading(false);
-      }
+    for (let index = 0; index < key.length; index += 1) {
+      hash ^= key.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
     }
 
-    loadSavedDocuments();
+    return `job_${(hash >>> 0).toString(16)}_${encodeURIComponent(key).slice(0, 80)}`;
+  }
 
-    return () => {
-      cancelled = true;
-    };
+  useEffect(() => {
+    if (!user?.uid) {
+      setFavourites([]);
+      setFavouritesLoading(false);
+      return undefined;
+    }
+
+    setFavouritesLoading(true);
+
+    const favouritesRef = collection(
+      db,
+      "matchwise_favourites",
+      user.uid,
+      "jobs",
+    );
+
+    const unsubscribe = onSnapshot(
+      favouritesRef,
+      (snapshot) => {
+        const savedJobs = snapshot.docs
+          .map((savedDoc) => savedDoc.data())
+          .filter(
+            (savedDoc) => savedDoc.job && typeof savedDoc.job === "object",
+          )
+          .map((savedDoc) => savedDoc.job);
+
+        setFavourites(savedJobs);
+        setFavouritesLoading(false);
+      },
+      (snapshotError) => {
+        console.error("Unable to load saved jobs:", snapshotError);
+        setError(
+          "Unable to load saved jobs. Check your Firestore rules and connection.",
+        );
+        setFavouritesLoading(false);
+      },
+    );
+
+    return unsubscribe;
   }, [user?.uid]);
 
-  async function saveSelectedDocument() {
-    if (!user?.uid || !selectedFile) {
-      setError("Choose a resume file before saving.");
+  async function toggleFavourite(job) {
+    if (!user?.uid) {
+      setError("Sign in to save favourite jobs.");
       return;
     }
 
-    setSavingDocument(true);
-    setError("");
-    setDocumentMessage("");
+    const jobKey = getJobKey(job);
+    const jobDocument = doc(
+      db,
+      "matchwise_favourites",
+      user.uid,
+      "jobs",
+      getJobDocumentId(job),
+    );
+    const alreadySaved = favourites.some((item) => getJobKey(item) === jobKey);
 
     try {
-      const safeName = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const storagePath = `users/${user.uid}/resumes/${Date.now()}-${safeName}`;
-      const documentRef = ref(storage, storagePath);
+      setError("");
 
-      await uploadBytes(documentRef, selectedFile, {
-        contentType: selectedFile.type || "application/octet-stream",
-        customMetadata: {
-          originalName: selectedFile.name,
-        },
-      });
-
-      const metadata = await getMetadata(documentRef);
-      setDocumentsOwnerUid(user.uid);
-      setSavedDocuments((current) => [
-        {
-          name: metadata.customMetadata?.originalName || selectedFile.name,
-          fullPath: documentRef.fullPath,
-          size: metadata.size,
-          contentType: metadata.contentType || selectedFile.type,
-          updatedAt: metadata.updated,
-          storageRef: documentRef,
-        },
-        ...current,
-      ]);
-      setDocumentMessage(`Saved “${selectedFile.name}” to your private documents.`);
-    } catch (err) {
-      setError(
-        err.code === "storage/unauthorized"
-          ? "Firebase Storage denied the upload. Check your Storage rules."
-          : "Could not save the resume to Firebase Storage. Check your Storage setup and try again.",
-      );
-    } finally {
-      setSavingDocument(false);
-    }
-  }
-
-  async function viewSavedDocument(document) {
-    // Open a tab immediately so browsers do not block it while the secure download runs.
-    const previewWindow = window.open("", "_blank");
-    if (previewWindow) {
-      previewWindow.document.title = document.name;
-      previewWindow.document.body.textContent = "Loading document…";
-    }
-
-    try {
-      const blob = await getBlob(document.storageRef);
-      const objectUrl = URL.createObjectURL(blob);
-
-      if (previewWindow) {
-        previewWindow.location.href = objectUrl;
+      if (alreadySaved) {
+        await deleteDoc(jobDocument);
       } else {
-        const link = window.document.createElement("a");
-        link.href = objectUrl;
-        link.download = document.name;
-        link.click();
+        // JSON serialization removes undefined values before Firestore writes.
+        const safeJob = JSON.parse(JSON.stringify(job));
+        await setDoc(jobDocument, {
+          jobKey,
+          job: safeJob,
+          savedAt: serverTimestamp(),
+        });
       }
-
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-    } catch (err) {
-      if (previewWindow) previewWindow.close();
-      setDocumentMessage(
-        err.code === "storage/unauthorized"
-          ? "You do not have permission to open this document."
-          : "Could not open this document. Please try again.",
+    } catch (saveError) {
+      console.error("Unable to update favourite job:", saveError);
+      setError(
+        "Unable to save this job. Check your Firestore rules and try again.",
       );
-    }
-  }
-
-  async function deleteSavedDocument(document) {
-    const confirmed = window.confirm(`Delete “${document.name}” from your saved documents?`);
-    if (!confirmed) return;
-
-    try {
-      await deleteObject(document.storageRef);
-      setSavedDocuments((current) =>
-        current.filter((item) => item.fullPath !== document.fullPath),
-      );
-      setDocumentMessage(`Deleted “${document.name}”.`);
-    } catch {
-      setDocumentMessage("Could not delete this document. Please try again.");
     }
   }
 
@@ -472,12 +420,12 @@ export default function App() {
     }
   }
 
-  const visibleSavedDocuments = documentsOwnerUid === user?.uid ? savedDocuments : [];
-
   const filteredMatches = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
 
-    const filtered = matches.filter((job) => {
+    const sourceJobs = showFavouritesOnly ? favourites : matches;
+
+    const filtered = sourceJobs.filter((job) => {
       const searchable = [
         job.title,
 
@@ -515,7 +463,7 @@ export default function App() {
 
       return (b.similarity ?? -1) - (a.similarity ?? -1);
     });
-  }, [matches, searchTerm, sortBy, workType]);
+  }, [matches, searchTerm, sortBy, workType, favourites, showFavouritesOnly]);
 
   if (authLoading) {
     return (
@@ -863,75 +811,6 @@ export default function App() {
                 </div>
               </div>
 
-              <section className="mt-6 border-t border-[#e2e6db] pt-5 dark:border-[#354337]">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h4 className="text-sm font-bold">Your saved documents</h4>
-                    <p className={`mt-1 text-xs ${mutedClass}`}>
-                      Private to your account. Only you can access these files.
-                    </p>
-                  </div>
-                  {selectedFile && (
-                    <button
-                      type="button"
-                      onClick={saveSelectedDocument}
-                      disabled={savingDocument}
-                      className="rounded-full border border-[#bdcbb2] px-4 py-2 text-xs font-bold text-[#476b3e] transition hover:bg-[#eaf0df] disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#586b4d] dark:text-[#c2dfa5] dark:hover:bg-[#2c392b]"
-                    >
-                      {savingDocument ? "Saving…" : "Save selected resume"}
-                    </button>
-                  )}
-                </div>
-
-                {documentMessage && (
-                  <p role="status" className="mt-3 rounded-xl border border-[#dce2d4] bg-white px-3 py-2 text-xs text-[#476b3e] dark:border-[#354337] dark:bg-[#1d261f] dark:text-[#c2dfa5]">
-                    {documentMessage}
-                  </p>
-                )}
-
-                {documentsLoading ? (
-                  <p className={`mt-4 text-xs ${mutedClass}`}>Loading your documents…</p>
-                ) : visibleSavedDocuments.length === 0 ? (
-                  <p className={`mt-4 text-xs ${mutedClass}`}>
-                    No saved resumes yet. Choose a PDF or DOCX file, then select “Save selected resume”.
-                  </p>
-                ) : (
-                  <ul className="mt-4 divide-y divide-[#e2e6db] dark:divide-[#354337]">
-                    {visibleSavedDocuments.map((document) => (
-                      <li key={document.fullPath} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#e5ecd9] text-[#31543a] dark:bg-[#354a34] dark:text-[#d9f36a]">
-                            <Icon name="file" size={17} />
-                          </span>
-                          <div className="min-w-0">
-                            <p className="break-all text-xs font-semibold">{document.name}</p>
-                            <p className={`mt-1 text-[10px] ${mutedClass}`}>
-                              {(document.size / 1024).toFixed(1)} KB · {formatDate(document.updatedAt)}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={() => viewSavedDocument(document)}
-                            className="text-xs font-bold text-[#476b3e] hover:underline dark:text-[#c2dfa5]"
-                          >
-                            View
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => deleteSavedDocument(document)}
-                            className="text-xs font-semibold text-[#8a5144] hover:underline dark:text-[#f0a899]"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
               {error && (
                 <p
                   role="alert"
@@ -944,7 +823,7 @@ export default function App() {
               <div className="mt-6 flex flex-col-reverse items-start justify-between gap-4 border-t border-[#e2e6db] pt-5 sm:flex-row sm:items-center dark:border-[#354337]">
                 <p className={`flex items-center gap-2 text-xs ${mutedClass}`}>
                   <Icon name="file" size={15} />
-                  Save a copy to your private Firebase documents.
+                  Your file is processed in memory, not saved as a document.
                 </p>
 
                 <button
@@ -1025,9 +904,36 @@ export default function App() {
 
               <p className={`mt-2 text-sm ${mutedClass}`}>
                 {matches.length
-                  ? `Showing ${filteredMatches.length} of ${matches.length} matching roles.`
-                  : "Upload your resume to rank these roles by how well they fit your experience."}
+                  ? `Showing ${filteredMatches.length} of ${showFavouritesOnly ? favourites.length : matches.length} ${showFavouritesOnly ? "favourite" : "matching"} roles · ${favourites.length} saved.`
+                  : `You have ${favourites.length} favourite ${favourites.length === 1 ? "job" : "jobs"}. Upload your resume to find matching roles.`}
               </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+              <button
+                type="button"
+                onClick={() => setShowFavouritesOnly(false)}
+                aria-pressed={!showFavouritesOnly}
+                className={`rounded-full border px-3 py-2 text-xs font-bold transition ${
+                  !showFavouritesOnly
+                    ? "border-[#254b35] bg-[#254b35] text-white dark:border-[#d9f36a] dark:bg-[#d9f36a] dark:text-[#203b2a]"
+                    : "border-[#dce2d4] text-[#476b3e] hover:bg-[#edf0e6] dark:border-[#435043] dark:text-[#c2dfa5] dark:hover:bg-[#263329]"
+                }`}
+              >
+                All jobs
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowFavouritesOnly(true)}
+                aria-pressed={showFavouritesOnly}
+                className={`rounded-full border px-3 py-2 text-xs font-bold transition ${
+                  showFavouritesOnly
+                    ? "border-[#254b35] bg-[#254b35] text-white dark:border-[#d9f36a] dark:bg-[#d9f36a] dark:text-[#203b2a]"
+                    : "border-[#dce2d4] text-[#476b3e] hover:bg-[#edf0e6] dark:border-[#435043] dark:text-[#c2dfa5] dark:hover:bg-[#263329]"
+                }`}
+              >
+                ♥ Favourites ({favouritesLoading ? "…" : favourites.length})
+              </button>
             </div>
 
             <div className="grid gap-2 sm:grid-cols-[minmax(190px,1fr)_150px_150px] lg:w-[570px]">
@@ -1254,6 +1160,41 @@ export default function App() {
                   </div>
 
                   <div className="flex items-center justify-between gap-4 sm:flex-col sm:items-end sm:justify-start sm:pt-1">
+                    <button
+                      type="button"
+                      onClick={() => toggleFavourite(job)}
+                      aria-label={
+                        favourites.some(
+                          (item) => getJobKey(item) === getJobKey(job),
+                        )
+                          ? "Remove from favourites"
+                          : "Add to favourites"
+                      }
+                      aria-pressed={favourites.some(
+                        (item) => getJobKey(item) === getJobKey(job),
+                      )}
+                      title={
+                        favourites.some(
+                          (item) => getJobKey(item) === getJobKey(job),
+                        )
+                          ? "Remove from favourites"
+                          : "Add to favourites"
+                      }
+                      className={`rounded-full border px-3 py-2 text-lg leading-none transition ${
+                        favourites.some(
+                          (item) => getJobKey(item) === getJobKey(job),
+                        )
+                          ? "border-[#e7b8b0] bg-[#fff0ed] text-[#b64c43] dark:border-[#694039] dark:bg-[#3a2521]"
+                          : "border-[#dce2d4] text-[#7d8977] hover:border-[#e7b8b0] hover:bg-[#fff0ed] hover:text-[#b64c43] dark:border-[#435043] dark:text-[#a8b3a5] dark:hover:border-[#694039] dark:hover:bg-[#3a2521]"
+                      }`}
+                    >
+                      {favourites.some(
+                        (item) => getJobKey(item) === getJobKey(job),
+                      )
+                        ? "♥"
+                        : "♡"}
+                    </button>
+
                     <div className="sm:text-right">
                       <p className="text-xl font-semibold tracking-tight text-[#527246] dark:text-[#d9f36a]">
                         {job.similarity == null
