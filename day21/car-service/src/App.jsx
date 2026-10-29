@@ -165,42 +165,6 @@ function Icon({ name, size = 20, className = "" }) {
   );
 }
 
-const initialRequests = [
-  {
-    id: "SR-2048",
-    title: "AC cooling is inconsistent",
-    car: "Hyundai Creta",
-    reg: "TN 09 AB 4821",
-    category: "AC & climate",
-    priority: "Medium",
-    status: "In progress",
-    date: "Today, 9:40 AM",
-    advisor: "Karthik R.",
-  },
-  {
-    id: "SR-2042",
-    title: "Periodic service · 40,000 km",
-    car: "Honda City",
-    reg: "TN 10 CD 7712",
-    category: "Scheduled service",
-    priority: "Low",
-    status: "Awaiting approval",
-    date: "Yesterday, 4:15 PM",
-    advisor: "Meera S.",
-  },
-  {
-    id: "SR-2037",
-    title: "Rattling noise from front wheel",
-    car: "Hyundai Creta",
-    reg: "TN 09 AB 4821",
-    category: "Suspension & brakes",
-    priority: "High",
-    status: "Inspection",
-    date: "24 Oct, 11:20 AM",
-    advisor: "Unassigned",
-  },
-];
-
 const brands = {
   Hyundai: ["Creta", "i20", "Venue", "Verna", "Grand i10 Nios"],
   Honda: ["City", "Amaze", "Elevate", "Jazz"],
@@ -333,6 +297,22 @@ function App() {
     reg: "",
     km: "",
   });
+  const [profileForm, setProfileForm] = useState({
+    fullName: "",
+    phone: "",
+    city: "",
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  useEffect(() => {
+    const metadata = session?.user?.user_metadata || {};
+    setProfileForm({
+      fullName: metadata.full_name || "",
+      phone: metadata.phone || "",
+      city: metadata.city || "",
+    });
+  }, [session?.user?.id, session?.user?.user_metadata?.full_name,
+      session?.user?.user_metadata?.phone, session?.user?.user_metadata?.city]);
 
   const filteredRequests = useMemo(
     () =>
@@ -410,32 +390,48 @@ function App() {
     setShowRequestModal(true);
   };
 
-  const submitRequest = (event) => {
+  const submitRequest = async (event) => {
     event.preventDefault();
-    const car = `${form.brand} ${form.model}`;
-    const newRequest = {
-      id: `SR-${2050 + requests.length}`,
-      title: form.description.trim() || form.category,
-      car,
-      reg: form.registration || "Registration not added",
-      category: form.category,
-      priority: "Medium",
-      status: "Submitted",
-      date: "Just now",
-      advisor: "Awaiting assignment",
-    };
-    setRequests((current) => [newRequest, ...current]);
-    setShowRequestModal(false);
-    setActivePage("Service requests");
-    setSearch("");
-    setRequestFilter("All requests");
-    setForm((current) => ({
-      ...current,
-      description: "",
-      category: "General service",
-      preferredDate: "",
-    }));
-    notify("Service request submitted");
+
+    // A service request must belong to a vehicle in the garage.
+    const vehicle = vehicles.find(
+      (v) => v.brand === form.brand && v.model === form.model,
+    );
+
+    if (!vehicle) {
+      notify("Add this vehicle to your garage before requesting service.");
+      return;
+    }
+
+    try {
+      const savedRequest = await addServiceRequest({
+        vehicleId: vehicle.id,
+        category: form.category,
+        description: form.description,
+        location: form.location,
+        preferredDate: form.preferredDate,
+      });
+
+      // Use the record returned by Supabase.
+      setRequests((current) => [savedRequest, ...current]);
+
+      setShowRequestModal(false);
+      setActivePage("Service requests");
+      setSearch("");
+      setRequestFilter("All requests");
+
+      setForm((current) => ({
+        ...current,
+        description: "",
+        category: "General service",
+        preferredDate: "",
+      }));
+
+      notify("Service request submitted");
+    } catch (error) {
+      console.error("Failed to submit service request:", error);
+      notify(error.message || "Could not submit service request.");
+    }
   };
 
   const submitVehicle = async (event) => {
@@ -466,8 +462,47 @@ function App() {
     }
   };
 
+  const userName =
+    profileForm.fullName.trim() ||
+    session?.user?.user_metadata?.full_name?.trim() ||
+    session?.user?.email?.split("@")[0] ||
+    "there";
+  const userInitials = userName
+    .split(/\\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join("") || "U";
+  const userEmail = session?.user?.email || "";
+  const userCity = profileForm.city.trim() || "Your garage";
+
+  const saveProfile = async () => {
+    setProfileSaving(true);
+    try {
+      const { data, error } = await supabase.auth.updateUser({
+        data: {
+          full_name: profileForm.fullName.trim(),
+          phone: profileForm.phone.trim(),
+          city: profileForm.city.trim(),
+        },
+      });
+      if (error) throw error;
+      if (data?.user) {
+        setSession((current) =>
+          current ? { ...current, user: data.user } : current,
+        );
+      }
+      notify("Profile updated");
+    } catch (error) {
+      console.error("Failed to update profile:", error);
+      notify(error.message || "Could not update profile.");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
   const pageTitle =
-    activePage === "Overview" ? "Good morning, Aravinth" : activePage;
+    activePage === "Overview" ? `Good morning, ${userName}` : activePage;
   const pageSubtitle =
     activePage === "Overview"
       ? "Here’s what’s happening with your vehicles."
@@ -563,13 +598,15 @@ function App() {
 
         <div className="flex items-center gap-3 border-t border-[#EEF0ED] px-5 py-4">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E6E8E2] text-[12px] font-bold text-[#59655E]">
-            AR
+            {userInitials}
           </div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[12px] font-semibold">
-              Aravinth R.
+              {userName}
             </div>
-            <div className="text-[10px] text-[#8B948F]">Personal account</div>
+            <div className="truncate text-[10px] text-[#8B948F]">
+              {userEmail || "Personal account"}
+            </div>
           </div>
           <button
             onClick={() => setActivePage("Settings")}
@@ -608,9 +645,13 @@ function App() {
 
           <div className="ml-auto flex items-center gap-3">
             <div className="hidden text-right sm:block">
-              <div className="text-[11px] font-semibold">Chennai, India</div>
+              <div className="text-[11px] font-semibold">{userCity}</div>
               <div className="mt-0.5 text-[10px] text-[#929B97]">
-                Tuesday, 27 October
+                {new Date().toLocaleDateString(undefined, {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                })}
               </div>
             </div>
             <div className="mx-1 hidden h-8 w-px bg-[#E8EBE7] sm:block" />
@@ -626,7 +667,7 @@ function App() {
               onClick={() => setActivePage("Settings")}
               className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E8E9E3] text-[11px] font-bold text-[#56645D]"
             >
-              AR
+              {userInitials}
             </button>
           </div>
         </header>
@@ -1080,29 +1121,56 @@ function App() {
                   Completed work and maintenance history for your vehicles.
                 </p>
               </div>
-              <div className="rounded-2xl border border-[#E6EAE5] bg-white p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#EEF0ED] pb-4">
-                  <div className="text-[12px] font-semibold">
-                    Hyundai Creta{" "}
-                    <span className="ml-2 text-[10px] font-normal text-[#8D9791]">
-                      TN 09 AB 4821
-                    </span>
+              <div className="space-y-3">
+                {vehicles.length === 0 ? (
+                  <div className="rounded-2xl border border-[#E6EAE5] bg-white px-5 py-10 text-center">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#F0F4F0] text-[#4B7579]">
+                      <Icon name="history" size={22} />
+                    </div>
+                    <div className="mt-3 text-[12px] font-semibold">
+                      No vehicles in your garage yet
+                    </div>
+                    <p className="mx-auto mt-1 max-w-sm text-[11px] leading-5 text-[#89938D]">
+                      Add a vehicle to start keeping its service information in one place.
+                    </p>
+                    <button
+                      onClick={() => setShowVehicleModal(true)}
+                      className="mt-4 h-9 rounded-xl bg-[#4B7579] px-4 text-[11px] font-semibold text-white"
+                    >
+                      Add a vehicle
+                    </button>
                   </div>
-                  <span className="text-[10px] text-[#89938D]">2023 model</span>
-                </div>
-                <div className="py-9 text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#F0F4F0] text-[#4B7579]">
-                    <Icon name="history" size={22} />
-                  </div>
-                  <div className="mt-3 text-[12px] font-semibold">
-                    Your service history will build here
-                  </div>
-                  <p className="mx-auto mt-1 max-w-sm text-[11px] leading-5 text-[#89938D]">
-                    Once a service request is completed, the inspection, work
-                    performed and parts used can be saved to your vehicle
-                    record.
-                  </p>
-                </div>
+                ) : (
+                  vehicles.map((vehicle) => (
+                    <div
+                      key={vehicle.id}
+                      className="rounded-2xl border border-[#E6EAE5] bg-white p-5"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#EEF0ED] pb-4">
+                        <div className="text-[12px] font-semibold">
+                          {vehicle.brand} {vehicle.model}
+                          <span className="ml-2 text-[10px] font-normal text-[#8D9791]">
+                            {vehicle.reg}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-[#89938D]">
+                          {vehicle.year ? `${vehicle.year} model` : "Year not added"}
+                        </span>
+                      </div>
+                      <div className="py-7 text-center">
+                        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#F0F4F0] text-[#4B7579]">
+                          <Icon name="history" size={20} />
+                        </div>
+                        <div className="mt-3 text-[12px] font-semibold">
+                          No completed service records yet
+                        </div>
+                        <p className="mx-auto mt-1 max-w-sm text-[11px] leading-5 text-[#89938D]">
+                          Completed service history for this vehicle will appear here when records are available.
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </section>
           )}
@@ -1158,20 +1226,42 @@ function App() {
                 <label className="text-[11px] font-semibold text-[#58645D]">
                   Full name
                   <input
-                    defaultValue="Aravinth R."
+                    value={profileForm.fullName}
+                    onChange={(event) =>
+                      setProfileForm((current) => ({
+                        ...current,
+                        fullName: event.target.value,
+                      }))
+                    }
+                    autoComplete="name"
+                    placeholder="Add your full name"
                     className="mt-2 h-10 w-full rounded-lg border border-[#DFE5DF] px-3 text-[12px] font-normal outline-none focus:border-[#77CCA4]"
                   />
                 </label>
                 <label className="text-[11px] font-semibold text-[#58645D]">
                   Email address
                   <input
-                    defaultValue="aravinth@example.com"
-                    className="mt-2 h-10 w-full rounded-lg border border-[#DFE5DF] px-3 text-[12px] font-normal outline-none focus:border-[#77CCA4]"
+                    type="email"
+                    value={userEmail}
+                    readOnly
+                    className="mt-2 h-10 w-full cursor-not-allowed rounded-lg border border-[#DFE5DF] bg-[#F7F8F6] px-3 text-[12px] font-normal outline-none"
                   />
+                  <span className="mt-1 block text-[10px] font-normal text-[#89938D]">
+                    Email is managed by your sign-in account.
+                  </span>
                 </label>
                 <label className="text-[11px] font-semibold text-[#58645D]">
                   Mobile number
                   <input
+                    type="tel"
+                    value={profileForm.phone}
+                    onChange={(event) =>
+                      setProfileForm((current) => ({
+                        ...current,
+                        phone: event.target.value,
+                      }))
+                    }
+                    autoComplete="tel"
                     placeholder="Add mobile number"
                     className="mt-2 h-10 w-full rounded-lg border border-[#DFE5DF] px-3 text-[12px] font-normal outline-none focus:border-[#77CCA4]"
                   />
@@ -1179,16 +1269,25 @@ function App() {
                 <label className="text-[11px] font-semibold text-[#58645D]">
                   City
                   <input
-                    defaultValue="Chennai"
+                    value={profileForm.city}
+                    onChange={(event) =>
+                      setProfileForm((current) => ({
+                        ...current,
+                        city: event.target.value,
+                      }))
+                    }
+                    autoComplete="address-level2"
+                    placeholder="Add your city"
                     className="mt-2 h-10 w-full rounded-lg border border-[#DFE5DF] px-3 text-[12px] font-normal outline-none focus:border-[#77CCA4]"
                   />
                 </label>
               </div>
               <button
-                onClick={() => notify("Settings saved locally for this demo")}
-                className="mt-5 h-10 rounded-xl bg-[#4B7579] px-4 text-[11px] font-semibold text-white"
+                onClick={saveProfile}
+                disabled={profileSaving}
+                className="mt-5 h-10 rounded-xl bg-[#4B7579] px-4 text-[11px] font-semibold text-white transition hover:bg-[#3E6568] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Save changes
+                {profileSaving ? "Saving..." : "Save changes"}
               </button>
             </section>
           )}
