@@ -4,6 +4,7 @@ import Auth from "./components/Auth";
 import {
   getVehicles,
   addVehicle,
+  deleteVehicle,
   getServiceRequests,
   addServiceRequest,
 } from "./lib/motiveData";
@@ -184,7 +185,8 @@ const navItems = [
     items: [
       { label: "Overview", icon: "grid" },
       { label: "My vehicles", icon: "car" },
-      { label: "Service requests", icon: "clipboard", count: "3" },
+      { label: "Service requests", icon: "clipboard" },
+      { label: "Notifications", icon: "bell" },
       { label: "Appointments", icon: "calendar" },
       { label: "Service history", icon: "history" },
     ],
@@ -267,20 +269,23 @@ function App() {
 
   const [activePage, setActivePage] = useState("Overview");
   const [requests, setRequests] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [vehicleDeletingId, setVehicleDeletingId] = useState(null);
   const [dataLoading, setDataLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [requestFilter, setRequestFilter] = useState("All requests");
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showVehicleModal, setShowVehicleModal] = useState(false);
   const [toast, setToast] = useState("");
-  const [selectedVehicle, setSelectedVehicle] = useState("Hyundai Creta");
+  const [selectedVehicle, setSelectedVehicle] = useState("");
 
   const [vehicles, setVehicles] = useState([]);
 
   const [form, setForm] = useState({
-    brand: "Hyundai",
-    model: "Creta",
-    year: "2023",
+    brand: "",
+    model: "",
+    year: "",
     registration: "",
     mileage: "",
     category: "General service",
@@ -313,6 +318,78 @@ function App() {
     });
   }, [session?.user?.id, session?.user?.user_metadata?.full_name,
       session?.user?.user_metadata?.phone, session?.user?.user_metadata?.city]);
+
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) {
+      setNotifications([]);
+      return undefined;
+    }
+
+    let active = true;
+    setNotificationsLoading(true);
+    const loadNotifications = async () => {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("id, title, message, type, read_at, created_at, request_id")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (!active) return;
+      if (error) {
+        // The migration may not have been applied yet; keep the rest of the app usable.
+        console.warn("Notifications unavailable:", error.message);
+      } else {
+        setNotifications(data || []);
+      }
+      setNotificationsLoading(false);
+    };
+    loadNotifications();
+
+    const channel = supabase
+      .channel(`user-notifications-${userId}`)
+      .on("postgres_changes", {
+        event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${userId}`,
+      }, (payload) => {
+        if (payload.eventType === "INSERT") {
+          setNotifications((current) => [payload.new, ...current.filter((item) => item.id !== payload.new.id)].slice(0, 50));
+        } else if (payload.eventType === "UPDATE") {
+          setNotifications((current) => current.map((item) => item.id === payload.new.id ? payload.new : item));
+        }
+      })
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, [session?.user?.id]);
+
+  const unreadNotifications = notifications.filter((item) => !item.read_at).length;
+
+  const markNotificationRead = async (notification) => {
+    if (notification.read_at) return;
+    const readAt = new Date().toISOString();
+    setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, read_at: readAt } : item));
+    const { error } = await supabase.from("notifications").update({ read_at: readAt }).eq("id", notification.id).eq("user_id", session.user.id);
+    if (error) notify("Could not mark notification as read. Apply the notifications SQL setup first.");
+  };
+
+  const deleteVehicleFromGarage = async (vehicle) => {
+    const confirmed = window.confirm(`Delete ${vehicle.brand} ${vehicle.model} from your garage? This may be blocked if it has service requests.`);
+    if (!confirmed) return;
+    setVehicleDeletingId(vehicle.id);
+    try {
+      await deleteVehicle(vehicle.id);
+      setVehicles((current) => current.filter((item) => item.id !== vehicle.id));
+      if (selectedVehicle === `${vehicle.brand} ${vehicle.model}`) setSelectedVehicle("");
+      notify(`${vehicle.brand} ${vehicle.model} removed from your garage`);
+    } catch (error) {
+      notify(error.message || "Could not delete this vehicle. It may have linked service requests.");
+    } finally {
+      setVehicleDeletingId(null);
+    }
+  };
 
   const filteredRequests = useMemo(
     () =>
@@ -381,9 +458,9 @@ function App() {
     );
     setForm((current) => ({
       ...current,
-      brand: vehicle?.brand || "Hyundai",
-      model: vehicle?.model || "Creta",
-      year: vehicle?.year || "2023",
+      brand: vehicle?.brand || "",
+      model: vehicle?.model || "",
+      year: vehicle?.year || "",
       registration: vehicle?.reg || "",
       mileage: vehicle?.km?.replace(",", "") || "",
     }));
@@ -468,7 +545,7 @@ function App() {
     session?.user?.email?.split("@")[0] ||
     "there";
   const userInitials = userName
-    .split(/\\s+/)
+    .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0].toUpperCase())
@@ -658,10 +735,10 @@ function App() {
             <button
               className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-[#E8EBE7] text-[#6C7772] transition hover:bg-[#F7F8F6]"
               aria-label="Notifications"
-              onClick={() => notify("You’re all caught up")}
+              onClick={() => setActivePage("Notifications")}
             >
               <Icon name="bell" size={17} />
-              <span className="absolute right-[7px] top-[7px] h-1.5 w-1.5 rounded-full bg-[#77CCA4] ring-2 ring-white" />
+              {unreadNotifications > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#A34F43] px-1 text-[9px] font-bold text-white ring-2 ring-white">{unreadNotifications > 9 ? "9+" : unreadNotifications}</span>}
             </button>
             <button
               onClick={() => setActivePage("Settings")}
@@ -1016,14 +1093,11 @@ function App() {
                         Request service
                       </button>
                       <button
-                        onClick={() =>
-                          notify(
-                            "Vehicle details editing will be available in the next iteration",
-                          )
-                        }
-                        className="h-9 rounded-lg border border-[#DFE5DF] px-4 text-[11px] font-semibold text-[#58645D]"
+                        onClick={() => deleteVehicleFromGarage(v)}
+                        disabled={vehicleDeletingId === v.id}
+                        className="h-9 rounded-lg border border-[#E8D8D5] px-3 text-[11px] font-semibold text-[#A34F43] disabled:opacity-50"
                       >
-                        Edit details
+                        {vehicleDeletingId === v.id ? "Deleting…" : "Delete"}
                       </button>
                     </div>
                   </div>
@@ -1216,11 +1290,40 @@ function App() {
             </section>
           )}
 
+          {activePage === "Notifications" && (
+            <section className="max-w-3xl rounded-2xl border border-[#E6EAE5] bg-white p-5 sm:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-[15px] font-semibold">Notifications</h2>
+                  <p className="mt-1 text-[11px] text-[#89938D]">Updates from the Motive service team appear here.</p>
+                </div>
+                {unreadNotifications > 0 && <button onClick={async () => {
+                  const readAt = new Date().toISOString();
+                  setNotifications((current) => current.map((item) => ({ ...item, read_at: item.read_at || readAt })));
+                  const { error } = await supabase.from("notifications").update({ read_at: readAt }).eq("user_id", session.user.id).is("read_at", null);
+                  if (error) notify("Could not mark all notifications as read.");
+                }} className="text-[11px] font-semibold text-[#4B7579]">Mark all as read</button>}
+              </div>
+              {notificationsLoading ? <p className="py-10 text-center text-sm text-[#89938D]">Loading notifications…</p> : notifications.length === 0 ? (
+                <div className="py-12 text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#EAF3EF] text-[#4B7579]"><Icon name="bell" size={20} /></div>
+                  <p className="mt-3 text-sm font-semibold">You’re all caught up</p>
+                  <p className="mt-1 text-xs text-[#89938D]">When an administrator updates a service request, you’ll see it here.</p>
+                </div>
+              ) : <div className="mt-5 divide-y divide-[#EEF0ED]">{notifications.map((item) => (
+                <button key={item.id} onClick={() => { markNotificationRead(item); if (item.request_id) setActivePage("Service requests"); }} className={`flex w-full gap-3 rounded-lg px-3 py-4 text-left transition hover:bg-[#FAFBF9] ${!item.read_at ? "bg-[#F6FAF7]" : ""}`}>
+                  <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${!item.read_at ? "bg-[#4B7579]" : "bg-transparent"}`} />
+                  <span className="min-w-0 flex-1"><span className="block text-[12px] font-semibold text-[#303936]">{item.title}</span><span className="mt-1 block text-[12px] leading-5 text-[#6F7973]">{item.message}</span><span className="mt-2 block text-[10px] text-[#929B97]">{new Date(item.created_at).toLocaleString()}</span></span>
+                </button>
+              ))}</div>}
+            </section>
+          )}
+
           {activePage === "Settings" && (
             <section className="max-w-2xl rounded-2xl border border-[#E6EAE5] bg-white p-6">
               <h2 className="text-[15px] font-semibold">Account settings</h2>
               <p className="mt-1 text-[11px] text-[#89938D]">
-                Personal details and notification preferences.
+                Update your account details and review service updates.
               </p>
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
                 <label className="text-[11px] font-semibold text-[#58645D]">

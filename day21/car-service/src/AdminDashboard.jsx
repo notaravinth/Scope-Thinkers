@@ -274,6 +274,30 @@ export default function AdminDashboard() {
 
       if (updateError) throw updateError;
 
+      const statusLabels = Object.fromEntries(STATUS_OPTIONS.map((item) => [item.value, item.label]));
+      const changes = [];
+      if (request.status !== data.status) changes.push(`Status updated to ${statusLabels[data.status] || data.status}.`);
+      if (Number(request.estimated_cost ?? 0) !== Number(data.estimated_cost ?? 0)) {
+        changes.push(data.estimated_cost == null ? "The estimate was removed." : `The service estimate is now ₹${Number(data.estimated_cost).toLocaleString("en-IN")}.`);
+      }
+      if ((request.appointment_at || null) !== (data.appointment_at || null)) {
+        changes.push(data.appointment_at ? `Appointment scheduled for ${new Date(data.appointment_at).toLocaleString()}.` : "The appointment schedule was cleared.");
+      }
+      if (changes.length > 0) {
+        const vehicleName = data.vehicles ? `${data.vehicles.brand} ${data.vehicles.model}` : "your vehicle";
+        const { error: notificationError } = await supabase.from("notifications").insert({
+          user_id: data.user_id,
+          request_id: data.id,
+          type: "service_request_update",
+          title: "Your service request was updated",
+          message: `${vehicleName}: ${changes.join(" ")}`,
+        });
+        if (notificationError) {
+          console.error("Request saved but notification could not be created:", notificationError);
+          setNotice("Service request updated, but notification delivery failed. Apply supabase-notifications.sql and enable Realtime for notifications.");
+        }
+      }
+
       setRequests((current) =>
         current.map((item) => (item.id === request.id ? data : item)),
       );
@@ -286,7 +310,7 @@ export default function AdminDashboard() {
           appointmentAt: toLocalDateTime(data.appointment_at),
         },
       }));
-      setNotice("Service request updated.");
+      setNotice((current) => current || "Service request updated.");
     } catch (saveError) {
       console.error("Admin request update failed:", saveError);
       setError(
